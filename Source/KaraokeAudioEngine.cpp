@@ -9,7 +9,7 @@ KaraokeAudioEngine::KaraokeAudioEngine()
     formats.addFormat(new juce::VST3PluginFormat());
 #endif
 
-    scanPlugins();
+    
 }
 
 KaraokeAudioEngine::~KaraokeAudioEngine()
