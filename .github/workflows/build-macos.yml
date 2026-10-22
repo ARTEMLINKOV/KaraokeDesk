@@ -25,18 +25,18 @@ jobs:
       - name: Get JUCE
         run: git clone --depth 1 https://github.com/juce-framework/JUCE.git "$RUNNER_TEMP/JUCE"
 
-      - name: Configure universal binary
+      - name: Configure Intel build for macOS 13+
         run: >-
           cmake -S . -B build
           -DJUCE_DIR="$RUNNER_TEMP/JUCE"
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          -DCMAKE_OSX_ARCHITECTURES="x86_64"
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
 
       - name: Compile
         run: cmake --build build --config Release --parallel 3
 
-      - name: Verify architectures and package app
+      - name: Verify Intel architecture and package app
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +46,9 @@ jobs:
             find build -maxdepth 5 -print
             exit 1
           fi
-          lipo -archs "$APP_PATH/Contents/MacOS/KaraokeDesk"
+          ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/KaraokeDesk")"
+          echo "Built executable architectures: $ARCHS"
+          [[ "$ARCHS" == "x86_64" ]]
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" KaraokeDesk-macOS.zip
 
       - name: Upload app artifact
