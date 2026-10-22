@@ -1,0 +1,58 @@
+name: Build KaraokeDesk for macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    paths:
+      - '.github/workflows/**'
+      - 'CMakeLists.txt'
+      - 'Source/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout KaraokeDesk
+        uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: brew install cmake
+
+      - name: Get JUCE
+        run: git clone --depth 1 https://github.com/juce-framework/JUCE.git "$RUNNER_TEMP/JUCE"
+
+      - name: Configure universal binary
+        run: >-
+          cmake -S . -B build
+          -DJUCE_DIR="$RUNNER_TEMP/JUCE"
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+
+      - name: Compile
+        run: cmake --build build --config Release --parallel 3
+
+      - name: Verify architectures and package app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build -type d -name 'KaraokeDesk.app' -print -quit)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "KaraokeDesk.app was not found after the build."
+            find build -maxdepth 5 -print
+            exit 1
+          fi
+          lipo -archs "$APP_PATH/Contents/MacOS/KaraokeDesk"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" KaraokeDesk-macOS.zip
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KaraokeDesk-macOS
+          path: KaraokeDesk-macOS.zip
+          if-no-files-found: error
+          retention-days: 7
