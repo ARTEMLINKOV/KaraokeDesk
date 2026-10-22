@@ -255,8 +255,10 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
     for (int channel = 0; channel < juce::jmin(2, numInputChannels); ++channel)
     {
         if (inputChannelData[channel] != nullptr)
-            inputPeaks[channel] = juce::FloatVectorOperations::findMinAndMax(
-                inputChannelData[channel], numSamples).getMagnitude();
+            const auto range = juce::FloatVectorOperations::findMinAndMax(
+                inputChannelData[channel], numSamples);
+            inputPeaks[channel] = juce::jmax(std::abs(range.getStart()),
+                                             std::abs(range.getEnd()));
         channelPeak[channel].store(inputPeaks[channel]);
     }
     for (int channel = juce::jmin(2, numInputChannels); channel < 2; ++channel)
@@ -309,8 +311,9 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
                 const auto* source = buffer.getReadPointer(0);
                 juce::FloatVectorOperations::copy(destination, source, chunk);
                 juce::FloatVectorOperations::multiply(destination, master, chunk);
+                const auto range = juce::FloatVectorOperations::findMinAndMax(destination, chunk);
                 outputPeak = juce::jmax(outputPeak,
-                    juce::FloatVectorOperations::findMinAndMax(destination, chunk).getMagnitude());
+                    juce::jmax(std::abs(range.getStart()), std::abs(range.getEnd())));
             }
         }
 
