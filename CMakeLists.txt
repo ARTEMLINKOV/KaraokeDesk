@@ -1,6 +1,17 @@
 
 cmake_minimum_required(VERSION 3.22)
 
+# Keep Intel Mac compatibility by default. Users can override these cache values
+# when intentionally building for another architecture or deployment target.
+if(APPLE)
+    if(NOT DEFINED CMAKE_OSX_ARCHITECTURES)
+        set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "macOS architectures")
+    endif()
+    if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
+    endif()
+endif()
+
 project(KaraokeDesk
     VERSION 0.1.0
     LANGUAGES C CXX
@@ -45,8 +56,18 @@ target_compile_definitions(KaraokeDesk PRIVATE
     JUCE_WEB_BROWSER=1
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_PLUGINHOST_VST3=1
     JUCE_MODAL_LOOPS_PERMITTED=1
 )
+
+if(APPLE)
+    target_compile_definitions(KaraokeDesk PRIVATE JUCE_PLUGINHOST_AU=1)
+    target_link_libraries(KaraokeDesk PRIVATE
+        "-framework AudioUnit"
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
+    )
+endif()
 
 target_link_libraries(KaraokeDesk PRIVATE
     juce::juce_audio_utils
