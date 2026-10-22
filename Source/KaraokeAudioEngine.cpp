@@ -3,7 +3,12 @@
 
 KaraokeAudioEngine::KaraokeAudioEngine()
 {
-    formats.addDefaultFormats();
+    formats.addFormat(new juce::AudioUnitPluginFormat());
+
+#if JUCE_PLUGINHOST_VST3
+    formats.addFormat(new juce::VST3PluginFormat());
+#endif
+
     scanPlugins();
 }
 
@@ -24,16 +29,20 @@ void KaraokeAudioEngine::scanPlugins()
         if (format->getName().containsIgnoreCase("AudioUnit"))
         {
             paths.add(juce::File("/Library/Audio/Plug-Ins/Components"));
-            paths.add(juce::File(juce::File::getSpecialLocation(
-                juce::File::userHomeDirectory)
-                .getChildFile("Library/Audio/Plug-Ins/Components")));
+            paths.add(
+                juce::File(
+                    juce::File::getSpecialLocation(
+                        juce::File::userHomeDirectory)
+                    .getChildFile("Library/Audio/Plug-Ins/Components")));
         }
         else if (format->getName().containsIgnoreCase("VST3"))
         {
             paths.add(juce::File("/Library/Audio/Plug-Ins/VST3"));
-            paths.add(juce::File(juce::File::getSpecialLocation(
-                juce::File::userHomeDirectory)
-                .getChildFile("Library/Audio/Plug-Ins/VST3")));
+            paths.add(
+                juce::File(
+                    juce::File::getSpecialLocation(
+                        juce::File::userHomeDirectory)
+                    .getChildFile("Library/Audio/Plug-Ins/VST3")));
         }
         else
         {
@@ -44,10 +53,13 @@ void KaraokeAudioEngine::scanPlugins()
             knownPlugins, *format, paths, true, juce::File(), false);
 
         juce::String name;
-        while (scanner.scanNextFile(true, name)) {}
+        while (scanner.scanNextFile(true, name))
+        {
+        }
     }
 
     descriptions.clear();
+
     for (const auto& d : knownPlugins.getTypes())
         descriptions.add(new juce::PluginDescription(d));
 }
@@ -55,6 +67,7 @@ void KaraokeAudioEngine::scanPlugins()
 void KaraokeAudioEngine::start()
 {
     auto error = deviceManager.initialise(2, 2, nullptr, true);
+
     if (error.isNotEmpty())
     {
         status = error;
@@ -75,8 +88,10 @@ void KaraokeAudioEngine::stop()
 juce::String KaraokeAudioEngine::getStatus() const
 {
     if (auto* dev = deviceManager.getCurrentAudioDevice())
+    {
         return status + " · " + dev->getName() + " · "
             + juce::String(dev->getCurrentSampleRate(), 0) + " Hz";
+    }
 
     return status;
 }
@@ -93,7 +108,9 @@ juce::StringArray KaraokeAudioEngine::getAvailablePluginNames() const
 }
 
 bool KaraokeAudioEngine::addPluginToChannel(
-    int channel, const juce::String& pluginName, juce::String& error)
+    int channel,
+    const juce::String& pluginName,
+    juce::String& error)
 {
     if (channel < 0 || channel > 1)
     {
@@ -117,11 +134,13 @@ bool KaraokeAudioEngine::addPluginToChannel(
 
     if (chosen == nullptr)
     {
-        error = "Plugin not found. Rescan/restart after installing AU or VST3.";
+        error =
+            "Plugin not found. Rescan/restart after installing AU or VST3.";
         return false;
     }
 
     juce::String creationError;
+
     std::unique_ptr<juce::AudioPluginInstance> plugin(
         formats.createPluginInstance(
             *chosen, sampleRate, blockSize, creationError));
@@ -129,14 +148,19 @@ bool KaraokeAudioEngine::addPluginToChannel(
     if (!plugin)
     {
         error = creationError.isNotEmpty()
-            ? creationError : "Could not instantiate plugin.";
+            ? creationError
+            : "Could not instantiate plugin.";
+
         return false;
     }
 
     const juce::ScopedLock sl(pluginLock);
+
     plugin->setPlayConfigDetails(2, 2, sampleRate, blockSize);
     plugin->prepareToPlay(sampleRate, blockSize);
-    chains[channel].push_back({ chosen->name, std::move(plugin) });
+
+    chains[channel].push_back(
+        { chosen->name, std::move(plugin) });
 
     return true;
 }
@@ -149,8 +173,10 @@ void KaraokeAudioEngine::clearChannel(int channel)
     const juce::ScopedLock sl(pluginLock);
 
     for (auto& p : chains[channel])
+    {
         if (p.instance)
             p.instance->releaseResources();
+    }
 
     chains[channel].clear();
 }
@@ -168,6 +194,9 @@ void KaraokeAudioEngine::setMasterGain(float gain)
 
 float KaraokeAudioEngine::getChannelPeak(int channel) const
 {
+    if (channel < 0 || channel > 1)
+        return 0.0f;
+
     return channelPeak[channel].load();
 }
 
@@ -176,7 +205,8 @@ float KaraokeAudioEngine::getMasterPeak() const
     return masterPeak.load();
 }
 
-void KaraokeAudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
+void KaraokeAudioEngine::audioDeviceAboutToStart(
+    juce::AudioIODevice* device)
 {
     if (device != nullptr)
     {
@@ -187,12 +217,16 @@ void KaraokeAudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     const juce::ScopedLock sl(pluginLock);
 
     for (auto& chain : chains)
+    {
         for (auto& p : chain)
+        {
             if (p.instance)
             {
                 p.instance->releaseResources();
                 p.instance->prepareToPlay(sampleRate, blockSize);
             }
+        }
+    }
 }
 
 void KaraokeAudioEngine::audioDeviceStopped()
@@ -200,14 +234,21 @@ void KaraokeAudioEngine::audioDeviceStopped()
     const juce::ScopedLock sl(pluginLock);
 
     for (auto& chain : chains)
+    {
         for (auto& p : chain)
+        {
             if (p.instance)
                 p.instance->releaseResources();
+        }
+    }
 }
 
 void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
-    const float* const* in, int numIn,
-    float* const* out, int numOut, int n,
+    const float* const* in,
+    int numIn,
+    float* const* out,
+    int numOut,
+    int n,
     const juce::AudioIODeviceCallbackContext&)
 {
     juce::AudioBuffer<float> mixed(out, numOut, n);
@@ -217,6 +258,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
     float peaks[2] = { 0.0f, 0.0f };
 
     const juce::ScopedTryLock sl(pluginLock);
+
     if (!sl.isLocked())
         return;
 
@@ -227,13 +269,17 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
         if (ch < numIn && in[ch] != nullptr)
             temp.copyFrom(0, 0, in[ch], n);
 
+        // Duplicate mono input to stereo.
         temp.copyFrom(1, 0, temp, 0, 0, n);
 
         for (auto& p : chains[ch])
+        {
             if (p.instance)
                 p.instance->processBlock(temp, midiBuffer);
+        }
 
         temp.applyGain(channelGain[ch]);
+
         peaks[ch] = temp.getMagnitude(0, 0, n);
 
         if (numOut > 0)
@@ -246,8 +292,10 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
     mixed.applyGain(masterGain);
 
     float blockPeak = 0.0f;
+
     for (int c = 0; c < numOut; ++c)
-        blockPeak = juce::jmax(blockPeak, mixed.getMagnitude(c, 0, n));
+        blockPeak = juce::jmax(
+            blockPeak, mixed.getMagnitude(c, 0, n));
 
     masterPeak.store(blockPeak);
     channelPeak[0].store(peaks[0]);
