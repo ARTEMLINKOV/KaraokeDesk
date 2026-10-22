@@ -1,4 +1,6 @@
 #include "MainComponent.h"
+#include <functional>
+#include <utility>
 
 namespace
 {
@@ -233,7 +235,7 @@ void MainComponent::paint(juce::Graphics& g)
     g.setColour(accent);
     g.fillRoundedRectangle(16.0f, 68.0f, 5.0f, 58.0f, 2.0f);
 
-    const int contentTop = 140;
+    const int contentTop = settingsVisible ? 196 : 140;
     const int mixerHeight = mixerVisible ? 270 : 0;
     const int videoHeight = juce::jmax(120, bounds.getHeight() - contentTop - mixerHeight - 18);
     g.setColour(panel);
