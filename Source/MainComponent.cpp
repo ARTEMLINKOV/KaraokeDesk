@@ -4,70 +4,93 @@ namespace
 {
     const juce::Colour bg(0xff0b0e14), panel(0xff151a24), panel2(0xff1d2431),
         accent(0xff6d5dfc), cyan(0xff37d6c5), text(0xfff3f5fb), muted(0xff9aa6ba);
+    const juce::Font uiFont(float size, bool bold = false)
+    {
+        return juce::Font(juce::FontOptions(size, bold ? juce::Font::bold : juce::Font::plain)
+                              .withName("Arial"));
+    }
 }
 
 MainComponent::MainComponent()
 {
     setSize(1440, 900);
+
     title.setText("KARAOKE DESK", juce::dontSendNotification);
-    title.setFont(juce::Font(juce::FontOptions(26.0f, juce::Font::bold)));
+    title.setFont(uiFont(25.0f, true));
     title.setColour(juce::Label::textColourId, text);
     addAndMakeVisible(title);
 
-    url.setTextToShowWhenEmpty("Вставь ссылку на YouTube-караоке…" , muted);
+    url.setTextToShowWhenEmpty("Вставь ссылку на YouTube-караоке…", muted);
     url.setColour(juce::TextEditor::backgroundColourId, panel2);
     url.setColour(juce::TextEditor::textColourId, text);
     url.setColour(juce::TextEditor::outlineColourId, panel2);
+    url.setFont(uiFont(14.0f));
     addAndMakeVisible(url);
-    styleButton(openButton); addAndMakeVisible(openButton);
+
+    for (auto* b : { &openButton, &mixerToggle, &startButton, &stopButton,
+                     &add1, &add2, &clear1, &clear2 })
+    {
+        styleButton(*b);
+        addAndMakeVisible(*b);
+    }
     openButton.onClick = [this] { openYoutube(); };
+    mixerToggle.onClick = [this]
+    {
+        mixerVisible = !mixerVisible;
+        mixerToggle.setButtonText(mixerVisible ? "СКРЫТЬ МИКШЕР" : "ПОКАЗАТЬ МИКШЕР");
+        resized();
+        repaint();
+    };
+    startButton.onClick = [this]
+    {
+        engine.start();
+        status.setText(engine.getStatus(), juce::dontSendNotification);
+    };
+    stopButton.onClick = [this]
+    {
+        engine.stop();
+        status.setText(engine.getStatus(), juce::dontSendNotification);
+    };
 
-    youtube.setVisible(true);
-    addAndMakeVisible(youtube);
-
-    styleButton(startButton); styleButton(stopButton);
-    addAndMakeVisible(startButton); addAndMakeVisible(stopButton);
-    startButton.onClick = [this] { engine.start(); status.setText(engine.getStatus(), juce::dontSendNotification); };
-    stopButton.onClick = [this] { engine.stop(); status.setText(engine.getStatus(), juce::dontSendNotification); };
-
-    status.setText("Готово · При необходимости выбери EVO 4 в настройках звука macOS", juce::dontSendNotification);
+    status.setText("Аудио остановлено", juce::dontSendNotification);
     status.setColour(juce::Label::textColourId, muted);
-    status.setFont(juce::Font(juce::FontOptions(12.0f)));
+    status.setFont(uiFont(12.0f));
     addAndMakeVisible(status);
 
-    auto setupLabel = [this](juce::Label& l, const juce::String& t, float size)
+    auto setupLabel = [this](juce::Label& l, const juce::String& value, float size)
     {
-        l.setText(t, juce::dontSendNotification);
+        l.setText(value, juce::dontSendNotification);
         l.setColour(juce::Label::textColourId, text);
-        l.setFont(juce::Font(juce::FontOptions(size, juce::Font::bold)));
+        l.setFont(uiFont(size, true));
         addAndMakeVisible(l);
     };
-    setupLabel(ch1Title, "МИКРОФОН 1 / ВОКАЛ", 16.0f);
-    setupLabel(ch2Title, "МИКРОФОН 2 / ВОКАЛ", 16.0f);
-    setupLabel(masterTitle, "МАСТЕР-ВЫХОД", 16.0f);
-    setupLabel(pluginsTitle, "ЭФФЕКТЫ VST3 / AU", 12.0f);
+    setupLabel(ch1Title, "МИКРОФОН 1", 15.0f);
+    setupLabel(ch2Title, "МИКРОФОН 2", 15.0f);
+    setupLabel(masterTitle, "МАСТЕР", 15.0f);
+    setupLabel(youtubeTitle, "ГРОМКОСТЬ YOUTUBE", 15.0f);
 
-    for (auto* s : { &gain1, &gain2, &master })
-    {
-        s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 72, 20);
-        s->setRange(0.0, 1.0, 0.01);
-        s->setColour(juce::Slider::rotarySliderFillColourId, accent);
-        s->setColour(juce::Slider::thumbColourId, cyan);
-        s->setColour(juce::Slider::textBoxTextColourId, text);
-        s->setColour(juce::Slider::textBoxBackgroundColourId, panel2);
-        addAndMakeVisible(*s);
-    }
-    gain1.setValue(0.8); gain2.setValue(0.8); master.setValue(0.65);
+    styleSlider(gain1, 0.8);
+    styleSlider(gain2, 0.8);
+    styleSlider(master, 0.65);
+    styleSlider(youtubeVolume, 0.8);
     gain1.onValueChange = [this] { engine.setChannelGain(0, (float) gain1.getValue()); };
     gain2.onValueChange = [this] { engine.setChannelGain(1, (float) gain2.getValue()); };
     master.onValueChange = [this] { engine.setMasterGain((float) master.getValue()); };
+    youtubeVolume.onValueChange = [this] { setYoutubeVolume(); };
 
     pluginNames = engine.getAvailablePluginNames();
-    for (int i = 0; i < pluginNames.size(); ++i) { plugin1.addItem(pluginNames[i], i + 1); plugin2.addItem(pluginNames[i], i + 1); }
-    addAndMakeVisible(plugin1); addAndMakeVisible(plugin2);
-    styleButton(add1); styleButton(add2); styleButton(clear1); styleButton(clear2);
-    addAndMakeVisible(add1); addAndMakeVisible(add2); addAndMakeVisible(clear1); addAndMakeVisible(clear2);
+    for (int i = 0; i < pluginNames.size(); ++i)
+    {
+        plugin1.addItem(pluginNames[i], i + 1);
+        plugin2.addItem(pluginNames[i], i + 1);
+    }
+    for (auto* combo : { &plugin1, &plugin2 })
+    {
+        combo->setColour(juce::ComboBox::backgroundColourId, panel2);
+        combo->setColour(juce::ComboBox::textColourId, text);
+        combo->setColour(juce::ComboBox::outlineColourId, muted);
+        addAndMakeVisible(*combo);
+    }
     add1.onClick = [this] { addPlugin(0); };
     add2.onClick = [this] { addPlugin(1); };
     clear1.onClick = [this] { engine.clearChannel(0); };
@@ -76,10 +99,13 @@ MainComponent::MainComponent()
     for (auto* l : { &meter1, &meter2, &meterMaster })
     {
         l->setColour(juce::Label::textColourId, cyan);
-        l->setFont(juce::Font(juce::FontOptions(11.0f)));
+        l->setFont(uiFont(11.0f));
         addAndMakeVisible(*l);
     }
-    startTimerHz(10);
+
+    youtube.setVisible(true);
+    addAndMakeVisible(youtube);
+    startTimerHz(4);
 }
 
 MainComponent::~MainComponent() { engine.stop(); }
@@ -89,6 +115,21 @@ void MainComponent::styleButton(juce::TextButton& b)
     b.setColour(juce::TextButton::buttonColourId, accent);
     b.setColour(juce::TextButton::textColourOffId, text);
     b.setColour(juce::TextButton::buttonOnColourId, cyan);
+    b.setFont(uiFont(12.0f, true));
+}
+
+void MainComponent::styleSlider(juce::Slider& s, double initialValue)
+{
+    s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 64, 20);
+    s.setRange(0.0, 1.0, 0.01);
+    s.setValue(initialValue, juce::dontSendNotification);
+    s.setColour(juce::Slider::rotarySliderFillColourId, accent);
+    s.setColour(juce::Slider::thumbColourId, cyan);
+    s.setColour(juce::Slider::textBoxTextColourId, text);
+    s.setColour(juce::Slider::textBoxBackgroundColourId, panel2);
+    s.setColour(juce::Slider::textBoxOutlineColourId, panel2);
+    addAndMakeVisible(s);
 }
 
 void MainComponent::openYoutube()
@@ -97,9 +138,15 @@ void MainComponent::openYoutube()
     if (s.isEmpty()) return;
     if (!s.startsWithIgnoreCase("https://") && !s.startsWithIgnoreCase("http://"))
         s = "https://" + s;
-    // JUCE WebBrowserComponent uses the system web view. YouTube may require login/cookies,
-    // and some playback paths can be blocked by the site's embedding policy.
     youtube.goToURL(s);
+}
+
+void MainComponent::setYoutubeVolume()
+{
+    const auto volume = juce::String(youtubeVolume.getValue(), 2);
+    // Adjust the HTML5 video element inside the embedded YouTube page, when available.
+    // The volume control only affects YouTube; microphone/master levels remain independent.
+    youtube.evaluateJavascript("(()=>{const v=document.querySelector('video');if(v){v.volume=" + volume + ";}})();");
 }
 
 void MainComponent::addPlugin(int channel)
@@ -107,71 +154,109 @@ void MainComponent::addPlugin(int channel)
     const int id = channel == 0 ? plugin1.getSelectedId() : plugin2.getSelectedId();
     if (id <= 0 || id > pluginNames.size())
     {
-        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Выбери эффект", "Установи совместимый AU или VST3-плагин и перезапусти приложение.");
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+            "Эффект не выбран", "Установи AU или VST3-плагин, затем перезапусти Karaoke Desk.");
         return;
     }
     juce::String error;
     if (!engine.addPluginToChannel(channel, pluginNames[id - 1], error))
-        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Не удалось загрузить плагин", error);
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+            "Не удалось загрузить эффект", error);
 }
 
 void MainComponent::timerCallback()
 {
     status.setText(engine.getStatus(), juce::dontSendNotification);
-    meter1.setText("ВХОД 1  " + juce::String(engine.getChannelPeak(0), 3), juce::dontSendNotification);
-    meter2.setText("ВХОД 2  " + juce::String(engine.getChannelPeak(1), 3), juce::dontSendNotification);
+    meter1.setText("ВХОД  " + juce::String(engine.getChannelPeak(0), 3), juce::dontSendNotification);
+    meter2.setText("ВХОД  " + juce::String(engine.getChannelPeak(1), 3), juce::dontSendNotification);
     meterMaster.setText("ВЫХОД  " + juce::String(engine.getMasterPeak(), 3), juce::dontSendNotification);
 }
 
 void MainComponent::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
-    auto r = getLocalBounds();
+    auto bounds = getLocalBounds();
     g.setColour(panel);
-    g.fillRoundedRectangle(18.0f, 72.0f, (float) getWidth() - 36.0f, 58.0f, 14.0f);
-    g.fillRoundedRectangle(18.0f, 144.0f, (float) getWidth() * 0.62f - 24.0f, (float) getHeight() - 166.0f, 16.0f);
-    g.fillRoundedRectangle((float) getWidth() * 0.64f, 144.0f, (float) getWidth() * 0.36f - 28.0f, (float) getHeight() - 166.0f, 16.0f);
-    g.setColour(panel2);
-    g.fillRoundedRectangle((float) getWidth() * 0.64f + 16.0f, 174.0f, (float) getWidth() * 0.36f - 60.0f, 210.0f, 12.0f);
-    g.fillRoundedRectangle((float) getWidth() * 0.64f + 16.0f, 400.0f, (float) getWidth() * 0.36f - 60.0f, 210.0f, 12.0f);
+    g.fillRoundedRectangle(16.0f, 68.0f, (float) bounds.getWidth() - 32.0f, 58.0f, 12.0f);
     g.setColour(accent);
-    g.fillRoundedRectangle(18.0f, 72.0f, 5.0f, 58.0f, 2.0f);
-    g.setColour(muted);
-    g.setFont(12.0f);
-    g.drawText("ВИДЕО КАРАОКЕ С YOUTUBE", 34, 150, 360, 20, juce::Justification::left);
-    g.drawText("МИКШЕР МИКРОФОНОВ", (int)(getWidth() * 0.64f + 18), 150, 280, 20, juce::Justification::left);
+    g.fillRoundedRectangle(16.0f, 68.0f, 5.0f, 58.0f, 2.0f);
+
+    const int contentTop = 140;
+    const int mixerHeight = mixerVisible ? 270 : 0;
+    const int videoHeight = juce::jmax(120, bounds.getHeight() - contentTop - mixerHeight - 18);
+    g.setColour(panel);
+    g.fillRoundedRectangle(16.0f, (float) contentTop, (float) bounds.getWidth() - 32.0f,
+                           (float) videoHeight, 14.0f);
+    if (mixerVisible)
+    {
+        const int mixerY = bounds.getHeight() - mixerHeight - 8;
+        g.setColour(panel);
+        g.fillRoundedRectangle(16.0f, (float) mixerY, (float) bounds.getWidth() - 32.0f,
+                               (float) mixerHeight, 14.0f);
+        g.setColour(panel2);
+        const int innerX = 28, gap = 12;
+        const int stripW = (bounds.getWidth() - 56 - gap * 3) / 4;
+        for (int i = 0; i < 4; ++i)
+            g.fillRoundedRectangle((float) (innerX + i * (stripW + gap)), (float) (mixerY + 12),
+                                   (float) stripW, (float) mixerHeight - 24.0f, 10.0f);
+    }
 }
 
 void MainComponent::resized()
 {
-    auto w = getWidth(), h = getHeight();
-    title.setBounds(24, 18, 340, 42);
-    url.setBounds(34, 84, w - 330, 34);
-    openButton.setBounds(w - 278, 83, 150, 36);
-    status.setBounds(w - 122, 24, 100, 28);
-    startButton.setBounds(w - 122, 56, 100, 28);
-    stopButton.setBounds(w - 122, 87, 100, 28);
+    const int w = getWidth(), h = getHeight();
+    title.setBounds(22, 12, 300, 42);
+    status.setBounds(w - 430, 14, 210, 24);
+    startButton.setBounds(w - 214, 8, 190, 30);
+    stopButton.setBounds(w - 214, 42, 190, 28);
 
-    auto leftX = 28, leftW = (int)(w * 0.62f) - 42;
-    youtube.setBounds(leftX, 174, leftW, h - 204);
+    url.setBounds(30, 80, w - 420, 34);
+    openButton.setBounds(w - 380, 79, 150, 36);
+    mixerToggle.setBounds(w - 220, 79, 190, 36);
 
-    auto rx = (int)(w * 0.64f) + 20;
-    ch1Title.setBounds(rx + 16, 180, 230, 26);
-    gain1.setBounds(rx + 10, 205, 115, 145);
-    plugin1.setBounds(rx + 135, 225, w - rx - 170, 30);
-    add1.setBounds(rx + 135, 265, 105, 30);
-    clear1.setBounds(rx + 248, 265, 100, 30);
-    meter1.setBounds(rx + 135, 305, 240, 24);
+    const int contentTop = 148;
+    const int mixerHeight = mixerVisible ? 270 : 0;
+    const int videoHeight = juce::jmax(120, h - contentTop - mixerHeight - 22);
+    youtube.setBounds(24, contentTop + 8, w - 48, videoHeight - 16);
 
-    ch2Title.setBounds(rx + 16, 406, 230, 26);
-    gain2.setBounds(rx + 10, 430, 115, 145);
-    plugin2.setBounds(rx + 135, 450, w - rx - 170, 30);
-    add2.setBounds(rx + 135, 490, 105, 30);
-    clear2.setBounds(rx + 248, 490, 100, 30);
-    meter2.setBounds(rx + 135, 530, 240, 24);
+    const int mixerY = h - mixerHeight - 8;
+    const int innerX = 28, gap = 12;
+    const int stripW = (w - 56 - gap * 3) / 4;
+    const int top = mixerY + 18;
+    const int sliderY = mixerY + 52;
+    const int sliderH = 145;
+    const int strip1 = innerX;
+    const int strip2 = innerX + stripW + gap;
+    const int strip3 = innerX + (stripW + gap) * 2;
+    const int strip4 = innerX + (stripW + gap) * 3;
 
-    masterTitle.setBounds(rx + 16, 628, 220, 24);
-    master.setBounds(rx + 10, 652, 110, 135);
-    meterMaster.setBounds(rx + 135, 690, 240, 24);
-    pluginsTitle.setBounds(rx + 135, 650, 200, 20);
+    ch1Title.setBounds(strip1 + 12, top, stripW - 24, 24);
+    gain1.setBounds(strip1 + 12, sliderY, 92, sliderH);
+    plugin1.setBounds(strip1 + 112, sliderY + 12, stripW - 128, 28);
+    add1.setBounds(strip1 + 112, sliderY + 50, (stripW - 136) / 2, 28);
+    clear1.setBounds(strip1 + 120 + (stripW - 136) / 2, sliderY + 50, (stripW - 136) / 2, 28);
+    meter1.setBounds(strip1 + 112, sliderY + 88, stripW - 128, 22);
+
+    ch2Title.setBounds(strip2 + 12, top, stripW - 24, 24);
+    gain2.setBounds(strip2 + 12, sliderY, 92, sliderH);
+    plugin2.setBounds(strip2 + 112, sliderY + 12, stripW - 128, 28);
+    add2.setBounds(strip2 + 112, sliderY + 50, (stripW - 136) / 2, 28);
+    clear2.setBounds(strip2 + 120 + (stripW - 136) / 2, sliderY + 50, (stripW - 136) / 2, 28);
+    meter2.setBounds(strip2 + 112, sliderY + 88, stripW - 128, 22);
+
+    masterTitle.setBounds(strip3 + 12, top, stripW - 24, 24);
+    master.setBounds(strip3 + (stripW - 100) / 2, sliderY, 100, sliderH);
+    meterMaster.setBounds(strip3 + 16, sliderY + 118, stripW - 32, 22);
+
+    youtubeTitle.setBounds(strip4 + 12, top, stripW - 24, 24);
+    youtubeVolume.setBounds(strip4 + (stripW - 100) / 2, sliderY, 100, sliderH);
+
+    const bool show = mixerVisible;
+    juce::Component* mixerControls[] = {
+        &ch1Title, &gain1, &plugin1, &add1, &clear1, &meter1,
+        &ch2Title, &gain2, &plugin2, &add2, &clear2, &meter2,
+        &masterTitle, &master, &meterMaster, &youtubeTitle, &youtubeVolume
+    };
+    for (auto* c : mixerControls)
+        c->setVisible(show);
 }
