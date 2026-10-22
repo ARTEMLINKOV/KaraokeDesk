@@ -26,13 +26,13 @@ jobs:
           repository: juce-framework/JUCE
           path: JUCE
 
-      - name: Configure universal binary
+      - name: Configure Intel build for macOS 13+
         run: |
           cmake -S . -B build \
             -DJUCE_DIR="$GITHUB_WORKSPACE/JUCE" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+            -DCMAKE_OSX_ARCHITECTURES="x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
 
       - name: Build
         run: cmake --build build --config Release --parallel 3
@@ -43,7 +43,7 @@ jobs:
           APP="build/KaraokeDesk_artefacts/Release/KaraokeDesk.app"
           test -d "$APP"
 
-          echo "Checking executable architectures:"
+          echo "Checking Intel executable architecture:"
           lipo -archs "$APP/Contents/MacOS/KaraokeDesk"
 
           mkdir -p release

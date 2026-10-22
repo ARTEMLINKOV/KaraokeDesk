@@ -12,11 +12,15 @@ public:
 
 private:
     KaraokeAudioEngine engine;
+    juce::ThreadPool pluginScanPool { 1 };
     juce::WebBrowserComponent youtube;
     juce::TextEditor url;
 
     juce::TextButton openButton { "ОТКРЫТЬ ВИДЕО" };
     juce::TextButton mixerToggle { "ПОКАЗАТЬ МИКШЕР" };
+    juce::TextButton settingsToggle { "НАСТРОЙКИ" };
+    juce::TextButton scanPluginsButton { "СКАНИРОВАТЬ VST / AU" };
+    juce::Label pluginScanStatus;
     juce::TextButton startButton { "ВКЛЮЧИТЬ МИКРОФОНЫ" };
     juce::TextButton stopButton { "ОСТАНОВИТЬ ЗВУК" };
     juce::TextButton add1 { "+ ЭФФЕКТ" }, add2 { "+ ЭФФЕКТ" };
@@ -28,10 +32,13 @@ private:
     juce::ComboBox plugin1, plugin2;
     juce::StringArray pluginNames;
     bool mixerVisible = false;
+    bool settingsVisible = false;
+    bool pluginScanRunning = false;
 
     void timerCallback() override;
     void openYoutube();
     void addPlugin(int channel);
+    void scanPluginsInBackground();
     void styleButton(juce::TextButton&);
     void styleSlider(juce::Slider&, double initialValue);
     void setYoutubeVolume();
