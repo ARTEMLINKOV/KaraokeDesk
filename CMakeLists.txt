@@ -1,14 +1,14 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-# Keep Intel Mac compatibility by default. Users can override these cache values
-# when intentionally building for another architecture or deployment target.
+# Keep compatibility with the project's macOS 13.x target and Intel Macs by default.
+# Users can override these cache values when intentionally targeting another setup.
 if(APPLE)
     if(NOT DEFINED CMAKE_OSX_ARCHITECTURES)
         set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "macOS architectures")
     endif()
     if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
     endif()
 endif()
 
