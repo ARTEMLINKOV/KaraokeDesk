@@ -1,4 +1,5 @@
 #include "KaraokeAudioEngine.h"
+#include <cmath>
 
 KaraokeAudioEngine::KaraokeAudioEngine()
 {
