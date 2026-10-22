@@ -3,9 +3,14 @@
 
 KaraokeAudioEngine::KaraokeAudioEngine()
 {
-    // JUCE registers only the plugin formats enabled by the build configuration.
-    // CMake enables VST3 everywhere and Audio Units on macOS.
-    formats.addDefaultFormats();
+    // The headless JUCE format manager deliberately disables addDefaultFormats().
+    // Register only formats enabled by this target's build configuration.
+   #if JUCE_PLUGINHOST_VST3
+    formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
+   #endif
+   #if JUCE_PLUGINHOST_AU
+    formats.addFormat(std::make_unique<juce::AudioUnitPluginFormat>());
+   #endif
     scanPlugins();
 }
 
@@ -73,8 +78,9 @@ void KaraokeAudioEngine::scanPlugins()
         }
     }
 
-    for (int i = 0; i < knownPlugins.getNumTypes(); ++i)
-        descriptions.add(new juce::PluginDescription(*knownPlugins.getType(i)));
+    // getTypes() is the current JUCE API; getType(index) is deprecated.
+    for (const auto& description : knownPlugins.getTypes())
+        descriptions.add(new juce::PluginDescription(description));
 }
 
 juce::StringArray KaraokeAudioEngine::getAvailablePluginNames() const
