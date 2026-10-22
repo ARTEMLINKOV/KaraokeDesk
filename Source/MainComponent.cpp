@@ -2,6 +2,22 @@
 
 namespace
 {
+    class PluginScanJob final : public juce::ThreadPoolJob
+    {
+    public:
+        PluginScanJob(KaraokeAudioEngine& audioEngine, std::function<void()> completion)
+            : ThreadPoolJob("KaraokeDesk plugin scan"), engine(audioEngine), onComplete(std::move(completion)) {}
+        JobStatus runJob() override
+        {
+            engine.scanPlugins();
+            juce::MessageManager::callAsync([callback = std::move(onComplete)] { if (callback) callback(); });
+            return jobHasFinished;
+        }
+    private:
+        KaraokeAudioEngine& engine;
+        std::function<void()> onComplete;
+    };
+
     const juce::Colour bg(0xff0b0e14), panel(0xff151a24), panel2(0xff1d2431),
         accent(0xff6d5dfc), cyan(0xff37d6c5), text(0xfff3f5fb), muted(0xff9aa6ba);
     const juce::Font uiFont(float size, bool bold = false)
@@ -27,13 +43,26 @@ MainComponent::MainComponent()
     url.setFont(uiFont(14.0f));
     addAndMakeVisible(url);
 
-    for (auto* b : { &openButton, &mixerToggle, &startButton, &stopButton,
+    for (auto* b : { &openButton, &mixerToggle, &settingsToggle, &scanPluginsButton, &startButton, &stopButton,
                      &add1, &add2, &clear1, &clear2 })
     {
         styleButton(*b);
         addAndMakeVisible(*b);
     }
     openButton.onClick = [this] { openYoutube(); };
+    settingsToggle.onClick = [this]
+    {
+        settingsVisible = !settingsVisible;
+        settingsToggle.setButtonText(settingsVisible ? "СКРЫТЬ НАСТРОЙКИ" : "НАСТРОЙКИ");
+        resized(); repaint();
+    };
+    scanPluginsButton.onClick = [this] { scanPluginsInBackground(); };
+    pluginScanStatus.setText("Поиск плагинов ещё не запускался", juce::dontSendNotification);
+    pluginScanStatus.setColour(juce::Label::textColourId, muted);
+    pluginScanStatus.setFont(uiFont(12.0f));
+    addAndMakeVisible(pluginScanStatus);
+    scanPluginsButton.setVisible(false);
+    pluginScanStatus.setVisible(false);
     mixerToggle.onClick = [this]
     {
         mixerVisible = !mixerVisible;
@@ -108,7 +137,7 @@ MainComponent::MainComponent()
     startTimerHz(4);
 }
 
-MainComponent::~MainComponent() { engine.stop(); }
+MainComponent::~MainComponent() { stopTimer(); pluginScanPool.removeAllJobs(true, -1); engine.stop(); }
 
 void MainComponent::styleButton(juce::TextButton& b)
 {
@@ -146,6 +175,30 @@ void MainComponent::setYoutubeVolume()
     // Adjust the HTML5 video element inside the embedded YouTube page, when available.
     // The volume control only affects YouTube; microphone/master levels remain independent.
     youtube.evaluateJavascript("(()=>{const v=document.querySelector('video');if(v){v.volume=" + volume + ";}})();");
+}
+
+void MainComponent::scanPluginsInBackground()
+{
+    if (pluginScanRunning) return;
+    pluginScanRunning = true;
+    scanPluginsButton.setEnabled(false);
+    pluginScanStatus.setText("Идёт поиск VST3 / AU…", juce::dontSendNotification);
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+    pluginScanPool.addJob(new PluginScanJob(engine, [safeThis]
+    {
+        if (safeThis == nullptr) return;
+        safeThis->pluginNames = safeThis->engine.getAvailablePluginNames();
+        safeThis->plugin1.clear(juce::dontSendNotification);
+        safeThis->plugin2.clear(juce::dontSendNotification);
+        for (int i = 0; i < safeThis->pluginNames.size(); ++i)
+        {
+            safeThis->plugin1.addItem(safeThis->pluginNames[i], i + 1);
+            safeThis->plugin2.addItem(safeThis->pluginNames[i], i + 1);
+        }
+        safeThis->pluginScanRunning = false;
+        safeThis->scanPluginsButton.setEnabled(true);
+        safeThis->pluginScanStatus.setText("Найдено плагинов: " + juce::String(safeThis->pluginNames.size()), juce::dontSendNotification);
+    }), true);
 }
 
 void MainComponent::addPlugin(int channel)
@@ -209,11 +262,15 @@ void MainComponent::resized()
     startButton.setBounds(w - 214, 8, 190, 30);
     stopButton.setBounds(w - 214, 42, 190, 28);
 
-    url.setBounds(30, 80, w - 420, 34);
-    openButton.setBounds(w - 380, 79, 150, 36);
-    mixerToggle.setBounds(w - 220, 79, 190, 36);
+    url.setBounds(30, 80, w - 610, 34);
+    openButton.setBounds(w - 570, 79, 145, 36);
+    mixerToggle.setBounds(w - 415, 79, 185, 36);
+    settingsToggle.setBounds(w - 220, 79, 190, 36);
+    scanPluginsButton.setBounds(30, 132, 210, 32);
+    pluginScanStatus.setBounds(252, 132, w - 280, 32);
 
-    const int contentTop = 148;
+    const int settingsHeight = settingsVisible ? 56 : 0;
+    const int contentTop = 148 + settingsHeight;
     const int mixerHeight = mixerVisible ? 270 : 0;
     const int videoHeight = juce::jmax(120, h - contentTop - mixerHeight - 22);
     youtube.setBounds(24, contentTop + 8, w - 48, videoHeight - 16);
@@ -250,6 +307,8 @@ void MainComponent::resized()
     youtubeTitle.setBounds(strip4 + 12, top, stripW - 24, 24);
     youtubeVolume.setBounds(strip4 + (stripW - 100) / 2, sliderY, 100, sliderH);
 
+    scanPluginsButton.setVisible(settingsVisible);
+    pluginScanStatus.setVisible(settingsVisible);
     const bool show = mixerVisible;
     juce::Component* mixerControls[] = {
         &ch1Title, &gain1, &plugin1, &add1, &clear1, &meter1,
