@@ -279,6 +279,8 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
         for (int channel = 0; channel < 2; ++channel)
         {
             auto& buffer = processingBuffers[channel];
+            // Change the active sample count without reallocating the preallocated storage.
+            buffer.setSize(2, chunk, false, false, true);
             const bool hasInput = channel < numInputChannels
                 && inputChannelData[channel] != nullptr;
 
@@ -291,7 +293,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
             // a stereo plugin buffer so stereo-only VST3/AU effects can be hosted.
             juce::FloatVectorOperations::copy(
                 buffer.getWritePointer(1), buffer.getReadPointer(0), chunk);
-            buffer.applyGain(channelGain[channel].load(), 0, chunk);
+            buffer.applyGain(channelGain[channel].load());
 
             if (havePluginLock)
             {
