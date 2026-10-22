@@ -11,7 +11,7 @@ KaraokeAudioEngine::KaraokeAudioEngine()
    #if JUCE_PLUGINHOST_AU
     formats.addFormat(std::make_unique<juce::AudioUnitPluginFormat>());
    #endif
-    scanPlugins();
+    // Plugin discovery is deferred until the user starts it from Settings.
 }
 
 KaraokeAudioEngine::~KaraokeAudioEngine()
