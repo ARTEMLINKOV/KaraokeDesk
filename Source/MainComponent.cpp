@@ -115,7 +115,6 @@ void MainComponent::styleButton(juce::TextButton& b)
     b.setColour(juce::TextButton::buttonColourId, accent);
     b.setColour(juce::TextButton::textColourOffId, text);
     b.setColour(juce::TextButton::buttonOnColourId, cyan);
-    b.setFont(uiFont(12.0f, true));
 }
 
 void MainComponent::styleSlider(juce::Slider& s, double initialValue)
