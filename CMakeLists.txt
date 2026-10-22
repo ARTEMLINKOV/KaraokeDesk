@@ -1,10 +1,24 @@
-cmake_minimum_required(VERSION 3.22)
-project(KaraokeDesk VERSION 0.1.0 LANGUAGES CXX)
 
-# Install JUCE (https://juce.com/download/) and pass -DJUCE_DIR=/path/to/JUCE
+cmake_minimum_required(VERSION 3.22)
+
+project(KaraokeDesk
+    VERSION 0.1.0
+    LANGUAGES C CXX
+)
+
+# Путь к исходникам JUCE задаётся через -DJUCE_DIR=...
 if(NOT DEFINED JUCE_DIR)
-  message(FATAL_ERROR "Set JUCE_DIR to your JUCE source folder, e.g. -DJUCE_DIR=$HOME/JUCE")
+    message(FATAL_ERROR
+        "Set JUCE_DIR to your JUCE source folder, e.g. -DJUCE_DIR=$HOME/JUCE"
+    )
 endif()
+
+if(NOT EXISTS "${JUCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "JUCE_DIR does not point to a valid JUCE source directory: ${JUCE_DIR}"
+    )
+endif()
+
 add_subdirectory("${JUCE_DIR}" JUCE)
 
 juce_add_gui_app(KaraokeDesk
@@ -23,13 +37,17 @@ target_sources(KaraokeDesk PRIVATE
     Source/KaraokeAudioEngine.cpp
 )
 
-target_compile_features(KaraokeDesk PRIVATE cxx_std_17)
+target_compile_features(KaraokeDesk PRIVATE
+    cxx_std_17
+)
+
 target_compile_definitions(KaraokeDesk PRIVATE
     JUCE_WEB_BROWSER=1
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_MODAL_LOOPS_PERMITTED=1
 )
+
 target_link_libraries(KaraokeDesk PRIVATE
     juce::juce_audio_utils
     juce::juce_audio_processors
