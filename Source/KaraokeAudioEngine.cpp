@@ -202,7 +202,7 @@ void KaraokeAudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     }
 
     // Allocate audio buffers before the real-time callback starts.
-    const int capacity = juce::jmax(blockSize, 8192);
+    processingCapacity = juce::jmax(blockSize, 8192);
     for (auto& buffer : processingBuffers)
         buffer.setSize(2, capacity, false, true, true);
 
@@ -273,8 +273,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
     int offset = 0;
     while (offset < numSamples)
     {
-        const int capacity = processingBuffers[0].getNumSamples();
-        const int chunk = juce::jmin(capacity, numSamples - offset);
+        const int chunk = juce::jmin(processingCapacity, numSamples - offset);
 
         for (int channel = 0; channel < 2; ++channel)
         {
