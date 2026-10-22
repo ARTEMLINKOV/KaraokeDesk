@@ -1,9 +1,10 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-# Keep compatibility with the project's macOS 13.x target and Intel Macs by default.
-# Users can override these cache values when intentionally targeting another setup.
-if(APPLE)
+# This is a macOS-only app. Set Apple toolchain defaults before project() so
+# CMake uses them when it first enables the C/C++ compilers.
+# Users can override these cache values for a different target configuration.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     if(NOT DEFINED CMAKE_OSX_ARCHITECTURES)
         set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "macOS architectures")
     endif()
