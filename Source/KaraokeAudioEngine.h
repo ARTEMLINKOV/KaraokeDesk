@@ -34,6 +34,7 @@ private:
     mutable juce::CriticalSection pluginLock;
     double sampleRate = 48000.0;
     int blockSize = 512;
+    int processingCapacity = 8192;
     std::atomic<float> channelGain[2] { 1.0f, 1.0f };
     std::atomic<float> masterGain { 0.7f };
     std::atomic<float> channelPeak[2] { 0.0f, 0.0f };
