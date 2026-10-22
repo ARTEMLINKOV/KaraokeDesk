@@ -3,13 +3,7 @@
 
 KaraokeAudioEngine::KaraokeAudioEngine()
 {
-    formats.addFormat(new juce::AudioUnitPluginFormat());
-
-    // Register VST3 only when the JUCE build exposes its host format.
-   #if JUCE_PLUGINHOST_VST3
     formats.addDefaultFormats();
-   #endif
-
     scanPlugins();
 }
 
