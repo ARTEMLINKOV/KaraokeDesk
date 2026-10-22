@@ -1,0 +1,47 @@
+
+name: Build KaraokeDesk for macOS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/**'
+      - 'CMakeLists.txt'
+      - 'Source/**'
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: brew install cmake
+
+      - name: Checkout JUCE
+        uses: actions/checkout@v4
+        with:
+          repository: juce-framework/JUCE
+          path: JUCE
+
+      - name: Configure
+        run: cmake -S . -B build -DJUCE_DIR="$GITHUB_WORKSPACE/JUCE" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 3
+
+      - name: Package app
+        run: |
+          APP=$(find build -name 'KaraokeDesk.app' -type d -print -quit)
+          test -n "$APP"
+          mkdir -p release
+          ditto "$APP" release/KaraokeDesk.app
+          cd release
+          zip -r ../KaraokeDesk-macOS.zip KaraokeDesk.app
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: KaraokeDesk-macOS
+          path: KaraokeDesk-macOS.zip
