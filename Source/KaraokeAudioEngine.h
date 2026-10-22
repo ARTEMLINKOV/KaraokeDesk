@@ -13,6 +13,7 @@ public:
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
     juce::String getStatus() const;
     juce::StringArray getAvailablePluginNames() const;
+    void scanPlugins();
     bool addPluginToChannel(int channel, const juce::String& pluginName, juce::String& error);
     void clearChannel(int channel);
     void setChannelGain(int channel, float gain);
@@ -42,6 +43,5 @@ private:
     juce::AudioBuffer<float> processingBuffers[2];
     juce::String status = "Not started";
     juce::MidiBuffer midiBuffer;
-    void scanPlugins();
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(KaraokeAudioEngine)
 };
