@@ -43,8 +43,20 @@ jobs:
           APP=$(find build -name 'KaraokeDesk.app' -type d -print -quit)
           test -n "$APP"
 
-          echo "Built app: $APP"
-          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist" || true
+          PLIST="$APP/Contents/Info.plist"
+
+          /usr/libexec/PlistBuddy \
+            -c 'Set :LSMinimumSystemVersion 13.0' "$PLIST" \
+            || /usr/libexec/PlistBuddy \
+            -c 'Add :LSMinimumSystemVersion string 13.0' "$PLIST"
+
+          echo "Minimum macOS version:"
+          /usr/libexec/PlistBuddy \
+            -c 'Print :LSMinimumSystemVersion' "$PLIST"
+
+          echo "Executable architecture:"
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")
+          file "$APP/Contents/MacOS/$EXECUTABLE"
 
           mkdir -p release
           ditto "$APP" release/KaraokeDesk.app
