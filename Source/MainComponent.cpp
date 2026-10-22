@@ -209,7 +209,7 @@ void MainComponent::addPlugin(int channel)
     if (id <= 0 || id > pluginNames.size())
     {
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-            "Эффект не выбран", "Установи AU или VST3-плагин, затем перезапусти Karaoke Desk.");
+            "Эффект не выбран", "Открой «Настройки» и нажми «Сканировать VST / AU», чтобы найти установленные плагины.");
         return;
     }
     juce::String error;
