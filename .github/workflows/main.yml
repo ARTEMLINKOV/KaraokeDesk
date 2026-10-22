@@ -26,12 +26,13 @@ jobs:
           repository: juce-framework/JUCE
           path: JUCE
 
-      - name: Configure for macOS 13
-        run: >
-          cmake -S . -B build
-          -DJUCE_DIR="$GITHUB_WORKSPACE/JUCE"
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+      - name: Configure universal binary
+        run: |
+          cmake -S . -B build \
+            -DJUCE_DIR="$GITHUB_WORKSPACE/JUCE" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
 
       - name: Build
         run: cmake --build build --config Release --parallel 3
@@ -39,24 +40,11 @@ jobs:
       - name: Package app
         run: |
           set -e
+          APP="build/KaraokeDesk_artefacts/Release/KaraokeDesk.app"
+          test -d "$APP"
 
-          APP=$(find build -name 'KaraokeDesk.app' -type d -print -quit)
-          test -n "$APP"
-
-          PLIST="$APP/Contents/Info.plist"
-
-          /usr/libexec/PlistBuddy \
-            -c 'Set :LSMinimumSystemVersion 13.0' "$PLIST" \
-            || /usr/libexec/PlistBuddy \
-            -c 'Add :LSMinimumSystemVersion string 13.0' "$PLIST"
-
-          echo "Minimum macOS version:"
-          /usr/libexec/PlistBuddy \
-            -c 'Print :LSMinimumSystemVersion' "$PLIST"
-
-          echo "Executable architecture:"
-          EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")
-          file "$APP/Contents/MacOS/$EXECUTABLE"
+          echo "Checking executable architectures:"
+          lipo -archs "$APP/Contents/MacOS/KaraokeDesk"
 
           mkdir -p release
           ditto "$APP" release/KaraokeDesk.app
@@ -69,4 +57,3 @@ jobs:
         with:
           name: KaraokeDesk-macOS
           path: KaraokeDesk-macOS.zip
-          if-no-files-found: error
