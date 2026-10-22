@@ -3,14 +3,13 @@
 
 KaraokeAudioEngine::KaraokeAudioEngine()
 {
-    // The headless JUCE format manager deliberately disables addDefaultFormats().
-    // Register only formats enabled by this target's build configuration.
-   #if JUCE_PLUGINHOST_VST3
+    // Register only plugin formats enabled by this target's build configuration.
+#if JUCE_PLUGINHOST_VST3
     formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
-   #endif
-   #if JUCE_PLUGINHOST_AU
+#endif
+#if JUCE_PLUGINHOST_AU
     formats.addFormat(std::make_unique<juce::AudioUnitPluginFormat>());
-   #endif
+#endif
     // Plugin discovery is deferred until the user starts it from Settings.
 }
 
@@ -78,7 +77,6 @@ void KaraokeAudioEngine::scanPlugins()
         }
     }
 
-    // getTypes() is the current JUCE API; getType(index) is deprecated.
     for (const auto& description : knownPlugins.getTypes())
         descriptions.add(new juce::PluginDescription(description));
 }
@@ -131,11 +129,10 @@ bool KaraokeAudioEngine::addPluginToChannel(
         return false;
     }
 
-    const double rate = deviceManager.getCurrentAudioDevice() != nullptr
-        ? deviceManager.getCurrentAudioDevice()->getCurrentSampleRate()
-        : sampleRate;
-    const int block = deviceManager.getCurrentAudioDevice() != nullptr
-        ? deviceManager.getCurrentAudioDevice()->getCurrentBufferSizeSamples()
+    auto* device = deviceManager.getCurrentAudioDevice();
+    const double rate = device != nullptr ? device->getCurrentSampleRate() : sampleRate;
+    const int block = device != nullptr
+        ? juce::jmax(1, device->getCurrentBufferSizeSamples())
         : blockSize;
 
     juce::String creationError;
@@ -208,7 +205,8 @@ void KaraokeAudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         blockSize = juce::jmax(1, device->getCurrentBufferSizeSamples());
     }
 
-    // Allocate audio buffers before the real-time callback starts.
+    // Allocate buffers before the real-time callback starts. Larger callbacks
+    // are processed in chunks, so the audio thread never needs to resize them.
     processingCapacity = juce::jmax(blockSize, 8192);
     for (auto& buffer : processingBuffers)
         buffer.setSize(2, processingCapacity, false, true, true);
@@ -258,54 +256,50 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
     if (numSamples <= 0)
         return;
 
-    float inputPeaks[2] { 0.0f, 0.0f };
-    for (int channel = 0; channel < juce::jmin(2, numInputChannels); ++channel)
+    const int availableInputs = juce::jmin(2, numInputChannels);
+    for (int channel = 0; channel < 2; ++channel)
     {
-        if (inputChannelData[channel] != nullptr)
+        float peak = 0.0f;
+        if (channel < availableInputs && inputChannelData[channel] != nullptr)
         {
             const auto range = juce::FloatVectorOperations::findMinAndMax(
                 inputChannelData[channel], numSamples);
-            inputPeaks[channel] = juce::jmax(std::abs(range.getStart()),
-                                             std::abs(range.getEnd()));
+            peak = juce::jmax(std::abs(range.getStart()), std::abs(range.getEnd()));
         }
-        channelPeak[channel].store(inputPeaks[channel]);
+        channelPeak[channel].store(peak);
     }
-    for (int channel = juce::jmin(2, numInputChannels); channel < 2; ++channel)
-        channelPeak[channel].store(0.0f);
 
-    // Never wait on the UI thread from the audio callback. If a plugin is being
-    // added/removed, pass the signal through cleanly for this block.
+    // The audio callback never waits for the UI thread. While a plugin chain
+    // is being edited, this block passes through without effects.
     const bool havePluginLock = pluginLock.tryEnter();
     const float master = masterGain.load();
-    float outputPeak = 0.0f;
 
     int offset = 0;
     while (offset < numSamples)
     {
         const int chunk = juce::jmin(processingCapacity, numSamples - offset);
 
-        for (int channel = 0; channel < 2; ++channel)
+        for (int inputChannel = 0; inputChannel < 2; ++inputChannel)
         {
-            auto& buffer = processingBuffers[channel];
-            // Change the active sample count without reallocating the preallocated storage.
+            auto& buffer = processingBuffers[inputChannel];
             buffer.setSize(2, chunk, false, false, true);
-            const bool hasInput = channel < numInputChannels
-                && inputChannelData[channel] != nullptr;
+
+            const bool hasInput = inputChannel < numInputChannels
+                && inputChannelData[inputChannel] != nullptr;
 
             if (hasInput)
-                buffer.copyFrom(0, 0, inputChannelData[channel] + offset, chunk);
+                buffer.copyFrom(0, 0, inputChannelData[inputChannel] + offset, chunk);
             else
                 buffer.clear(0, 0, chunk);
 
-            // Each mic has an independent effect chain. Duplicate mono input to
-            // a stereo plugin buffer so stereo-only VST3/AU effects can be hosted.
+            // Host mono microphones through stereo effects by duplicating input.
             juce::FloatVectorOperations::copy(
                 buffer.getWritePointer(1), buffer.getReadPointer(0), chunk);
-            buffer.applyGain(channelGain[channel].load());
+            buffer.applyGain(channelGain[inputChannel].load());
 
             if (havePluginLock)
             {
-                for (auto& slot : chains[channel])
+                for (auto& slot : chains[inputChannel])
                 {
                     if (slot.instance != nullptr)
                     {
@@ -315,15 +309,25 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
                 }
             }
 
-            if (channel < numOutputChannels && outputChannelData[channel] != nullptr)
+            // Mix both microphone chains into the stereo master bus. A mono
+            // output receives a safe average of the processed stereo signal.
+            if (numOutputChannels == 1 && outputChannelData[0] != nullptr)
             {
-                auto* destination = outputChannelData[channel] + offset;
-                const auto* source = buffer.getReadPointer(0);
-                juce::FloatVectorOperations::copy(destination, source, chunk);
-                juce::FloatVectorOperations::multiply(destination, master, chunk);
-                const auto range = juce::FloatVectorOperations::findMinAndMax(destination, chunk);
-                outputPeak = juce::jmax(outputPeak,
-                    juce::jmax(std::abs(range.getStart()), std::abs(range.getEnd())));
+                auto* destination = outputChannelData[0] + offset;
+                const auto* left = buffer.getReadPointer(0);
+                const auto* right = buffer.getReadPointer(1);
+                for (int sample = 0; sample < chunk; ++sample)
+                    destination[sample] += 0.5f * (left[sample] + right[sample]) * master;
+            }
+            else
+            {
+                if (numOutputChannels > 0 && outputChannelData[0] != nullptr)
+                    juce::FloatVectorOperations::addWithMultiply(
+                        outputChannelData[0] + offset, buffer.getReadPointer(0), master, chunk);
+
+                if (numOutputChannels > 1 && outputChannelData[1] != nullptr)
+                    juce::FloatVectorOperations::addWithMultiply(
+                        outputChannelData[1] + offset, buffer.getReadPointer(1), master, chunk);
             }
         }
 
@@ -333,5 +337,16 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
     if (havePluginLock)
         pluginLock.exit();
 
+    float outputPeak = 0.0f;
+    for (int channel = 0; channel < numOutputChannels; ++channel)
+    {
+        if (outputChannelData[channel] != nullptr)
+        {
+            const auto range = juce::FloatVectorOperations::findMinAndMax(
+                outputChannelData[channel], numSamples);
+            outputPeak = juce::jmax(outputPeak,
+                juce::jmax(std::abs(range.getStart()), std::abs(range.getEnd())));
+        }
+    }
     masterPeak.store(outputPeak);
 }
