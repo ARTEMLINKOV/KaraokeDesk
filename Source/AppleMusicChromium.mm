@@ -94,9 +94,16 @@ namespace
 
     void logBrowserError(const std::string& message)
     {
+        cefLogFile.getParentDirectory().createDirectory();
         std::ofstream log(cefLogFile.getFullPathName().toStdString(), std::ios::app);
         if (log)
             log << message << '\n';
+    }
+
+    void setStartupError(const juce::String& message)
+    {
+        startupError = message;
+        logBrowserError(message.toStdString());
     }
 
     class KaraokeDeskCefApp final : public CefApp,
@@ -191,6 +198,7 @@ namespace
         {
             CEF_REQUIRE_UI_THREAD();
             activeBrowsers.push_back(browser);
+            logBrowserError("Apple Music browser created.");
             if (onCreated)
                 onCreated(browser);
         }
@@ -228,10 +236,22 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
     if (cefInitialized.load())
         return true;
 
+    const auto appData = juce::File::getSpecialLocation(
+        juce::File::userApplicationDataDirectory).getChildFile("KaraokeDesk");
+    const auto cacheRoot = appData.getChildFile("AppleMusicChromium");
+    cefLogFile = cacheRoot.getChildFile("cef.log");
+    if (auto result = cacheRoot.createDirectory(); result.failed())
+    {
+        error = juce::String::fromUTF8("Не удалось создать папку диагностики Chromium: ")
+                + result.getErrorMessage();
+        setStartupError(error);
+        return false;
+    }
+
     if (!libraryLoader.LoadInMain())
     {
         error = juce::String::fromUTF8("Не удалось загрузить Chromium Embedded Framework.");
-        startupError = error;
+        setStartupError(error);
         return false;
     }
 
@@ -241,7 +261,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         if (![application isKindOfClass:[KaraokeDeskCEFApplication class]])
         {
             error = juce::String::fromUTF8("Не удалось создать NSApplication для Chromium.");
-            startupError = error;
+            setStartupError(error);
             return false;
         }
 
@@ -253,23 +273,19 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         {
             error = juce::String::fromUTF8("Не найден Chromium helper: ")
                     + helperExecutable.getFullPathName();
-            startupError = error;
+            setStartupError(error);
             return false;
         }
 
-        const auto appData = juce::File::getSpecialLocation(
-            juce::File::userApplicationDataDirectory).getChildFile("KaraokeDesk");
-        const auto cacheRoot = appData.getChildFile("AppleMusicChromium");
         const auto cachePath = cacheRoot.getChildFile("Default");
         if (auto result = cachePath.createDirectory(); result.failed())
         {
             error = juce::String::fromUTF8("Не удалось создать профиль Chromium: ")
                     + result.getErrorMessage();
-            startupError = error;
+            setStartupError(error);
             return false;
         }
 
-        cefLogFile = cacheRoot.getChildFile("cef.log");
         CefMainArgs mainArgs(argc, argv);
         CefSettings settings;
         settings.external_message_pump = true;
@@ -287,7 +303,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
             error = juce::String::fromUTF8(
                 "Chromium не смог запуститься (CEF initialization failed).\nЖурнал: ")
                     + cefLogFile.getFullPathName();
-            startupError = error;
+            setStartupError(error);
             return false;
         }
     }
@@ -343,7 +359,13 @@ AppleMusicChromiumBrowser::~AppleMusicChromiumBrowser()
 
 bool AppleMusicChromiumBrowser::loadUrl(const juce::String& url)
 {
-    if (!cefInitialized.load() || url.isEmpty())
+    if (!cefInitialized.load())
+    {
+        if (startupError.isEmpty())
+            setStartupError(juce::String::fromUTF8("Chromium не был инициализирован."));
+        return false;
+    }
+    if (url.isEmpty())
         return false;
 
     if (impl->browser)
@@ -378,9 +400,16 @@ bool AppleMusicChromiumBrowser::loadUrl(const juce::String& url)
                                        url.toStdString(), browserSettings, nullptr, nullptr))
     {
         impl->client = nullptr;
+        setStartupError(juce::String::fromUTF8(
+            "CEF отклонил создание браузера. Подробности записаны в cef.log."));
         return false;
     }
     return true;
+}
+
+bool AppleMusicChromiumBrowser::isBrowserCreated() const
+{
+    return impl->browser != nullptr;
 }
 
 void AppleMusicChromiumBrowser::pauseMedia()

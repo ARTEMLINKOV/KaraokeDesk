@@ -10,6 +10,7 @@ public:
     ~AppleMusicChromiumBrowser() override;
 
     bool loadUrl(const juce::String& url);
+    bool isBrowserCreated() const;
     void pauseMedia();
     void resized() override;
 

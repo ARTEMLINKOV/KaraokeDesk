@@ -1078,21 +1078,37 @@ void MainComponent::openAppleMusic()
     engine.setActiveBrowserChannel(3);
     youtube.setVisible(false);
     appleMusicWeb.setVisible(true);
-    if (!appleMusicPageOpened)
+    if (appleMusicOpenPending && !appleMusicWeb.isBrowserCreated())
     {
-        if (!appleMusicWeb.loadUrl("https://music.apple.com/"))
-        {
-            appleMusicWeb.setVisible(false);
-            const auto error = getAppleMusicChromiumStartupError();
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::MessageBoxIconType::WarningIcon,
-                utf8("Не удалось открыть Apple Music"),
-                error.isNotEmpty() ? error
-                                   : utf8("Не удалось создать встроенную страницу Chromium."));
-            return;
-        }
-        appleMusicPageOpened = true;
+        appleMusicStatus = utf8("Apple Music: браузер запускается…");
+        status.setText(appleMusicStatus, juce::dontSendNotification);
+        status.setTooltip(appleMusicStatus);
+        return;
     }
+
+    if (!appleMusicWeb.loadUrl("https://music.apple.com/"))
+    {
+        appleMusicOpenPending = false;
+        appleMusicPageOpened = false;
+        appleMusicWeb.setVisible(false);
+        appleMusicStatus = getAppleMusicChromiumStartupError();
+        if (appleMusicStatus.isEmpty())
+            appleMusicStatus = utf8("Не удалось создать встроенный браузер.");
+        status.setText(utf8("Ошибка Apple Music"), juce::dontSendNotification);
+        status.setTooltip(appleMusicStatus);
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon,
+            utf8("Не удалось открыть Apple Music"),
+            appleMusicStatus);
+        return;
+    }
+
+    appleMusicOpenPending = !appleMusicWeb.isBrowserCreated();
+    appleMusicOpenStartedMs = juce::Time::getMillisecondCounterHiRes();
+    appleMusicPageOpened = appleMusicWeb.isBrowserCreated();
+    appleMusicStatus = utf8("Apple Music: открываю страницу…");
+    status.setText(appleMusicStatus, juce::dontSendNotification);
+    status.setTooltip(appleMusicStatus);
 
     if (monitorButton.getToggleState())
     {
@@ -1395,7 +1411,33 @@ void MainComponent::showPluginEditor(int channel, int slot)
 
 void MainComponent::timerCallback()
 {
-    status.setText(engine.getStatus(), juce::dontSendNotification);
+    if (appleMusicOpenPending)
+    {
+        if (appleMusicWeb.isBrowserCreated())
+        {
+            appleMusicOpenPending = false;
+            appleMusicPageOpened = true;
+            appleMusicStatus = utf8("Apple Music: браузер запущен");
+        }
+        else if (juce::Time::getMillisecondCounterHiRes() - appleMusicOpenStartedMs > 15000.0)
+        {
+            appleMusicOpenPending = false;
+            appleMusicPageOpened = false;
+            appleMusicStatus = utf8("Apple Music: Chromium не создал браузер. Журнал: ")
+                + juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                    .getChildFile("KaraokeDesk/AppleMusicChromium/cef.log").getFullPathName();
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                utf8("Не удалось запустить Apple Music"),
+                appleMusicStatus);
+        }
+    }
+
+    status.setText(appleMusicStatus.isNotEmpty()
+                       ? appleMusicStatus
+                       : engine.getStatus(),
+                   juce::dontSendNotification);
+    status.setTooltip(appleMusicStatus);
     const auto meterProportion = [](float peak)
     {
         if (peak <= 0.000001f)
