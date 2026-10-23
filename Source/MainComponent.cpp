@@ -1420,6 +1420,7 @@ void MainComponent::timerCallback()
 {
     if (appleMusicOpenPending)
     {
+        appleMusicWeb.pumpMessageLoop();
         if (appleMusicWeb.isBrowserCreated())
         {
             appleMusicOpenPending = false;

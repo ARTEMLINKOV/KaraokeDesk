@@ -11,6 +11,7 @@ public:
 
     bool loadUrl(const juce::String& url);
     bool isBrowserCreated() const;
+    void pumpMessageLoop();
     void pauseMedia();
     void resized() override;
 

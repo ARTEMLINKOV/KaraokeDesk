@@ -56,6 +56,7 @@ namespace
     std::atomic<uint64_t> pumpCancellationGeneration { 0 };
     std::atomic<int> scheduledPumpCalls { 0 };
     std::atomic<int> executedPumpCalls { 0 };
+    std::atomic<int> startupWatchdogPumpCalls { 0 };
     std::vector<CefRefPtr<CefBrowser>> activeBrowsers;
     juce::String startupError;
     juce::File cefLogFile;
@@ -442,6 +443,17 @@ bool AppleMusicChromiumBrowser::loadUrl(const juce::String& url)
 bool AppleMusicChromiumBrowser::isBrowserCreated() const
 {
     return impl->browser != nullptr;
+}
+
+void AppleMusicChromiumBrowser::pumpMessageLoop()
+{
+    if (!cefInitialized.load() || impl->browser)
+        return;
+
+    CEF_REQUIRE_UI_THREAD();
+    if (startupWatchdogPumpCalls.fetch_add(1) < 5)
+        logBrowserError("CEF startup watchdog pump executed.");
+    CefDoMessageLoopWork();
 }
 
 void AppleMusicChromiumBrowser::pauseMedia()
