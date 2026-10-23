@@ -146,10 +146,10 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
 
     @autoreleasepool
     {
-        [NSApplication sharedApplication];
-        if (![NSApp isKindOfClass:[KaraokeDeskCEFApplication class]])
+        auto* application = [KaraokeDeskCEFApplication sharedApplication];
+        if (![application isKindOfClass:[KaraokeDeskCEFApplication class]])
         {
-            error = juce::String::fromUTF8("В приложении не настроен главный класс CEF.");
+            error = juce::String::fromUTF8("Не удалось создать NSApplication для Chromium.");
             startupError = error;
             return false;
         }
