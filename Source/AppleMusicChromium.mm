@@ -13,10 +13,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
-#include <functional>
 #include <fstream>
+#include <functional>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
@@ -71,6 +74,22 @@ namespace
             }
         }
         return text;
+    }
+
+    std::string makeDataUrl(const std::string& html)
+    {
+        std::ostringstream encoded;
+        encoded << "data:text/html;charset=utf-8,";
+        for (const unsigned char character : html)
+        {
+            if (std::isalnum(character) || character == '-' || character == '_'
+                || character == '.' || character == '~')
+                encoded << character;
+            else
+                encoded << '%' << std::uppercase << std::hex << std::setw(2)
+                        << std::setfill('0') << static_cast<int>(character);
+        }
+        return encoded.str();
     }
 
     void logBrowserError(const std::string& message)
@@ -155,7 +174,7 @@ namespace
                 "<p>Код ошибки Chromium: " + std::to_string(errorCode) + "</p>"
                 "<p>" + escapeHtml(description) + "</p>"
                 "<p>Адрес: " + escapeHtml(url) + "</p></main></body></html>";
-            frame->LoadString(page, failedUrl);
+            frame->LoadURL(makeDataUrl(page));
         }
 
         void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
