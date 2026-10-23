@@ -7,6 +7,7 @@
 #include "include/cef_browser_process_handler.h"
 #include "include/cef_client.h"
 #include "include/cef_life_span_handler.h"
+#include "include/cef_load_handler.h"
 #include "include/wrapper/cef_helpers.h"
 #include "include/wrapper/cef_library_loader.h"
 
@@ -15,6 +16,8 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <fstream>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -50,6 +53,32 @@ namespace
     std::atomic<uint64_t> pumpGeneration { 0 };
     std::vector<CefRefPtr<CefBrowser>> activeBrowsers;
     juce::String startupError;
+    juce::File cefLogFile;
+
+    std::string escapeHtml(std::string text)
+    {
+        const std::pair<const char*, const char*> replacements[] = {
+            { "&", "&amp;" }, { "<", "&lt;" }, { ">", "&gt;" },
+            { "\"", "&quot;" }, { "'", "&#39;" }
+        };
+        for (const auto& [character, replacement] : replacements)
+        {
+            size_t position = 0;
+            while ((position = text.find(character, position)) != std::string::npos)
+            {
+                text.replace(position, std::char_traits<char>::length(character), replacement);
+                position += std::char_traits<char>::length(replacement);
+            }
+        }
+        return text;
+    }
+
+    void logBrowserError(const std::string& message)
+    {
+        std::ofstream log(cefLogFile.getFullPathName().toStdString(), std::ios::app);
+        if (log)
+            log << message << '\n';
+    }
 
     class KaraokeDeskCefApp final : public CefApp,
                                     public CefBrowserProcessHandler
@@ -79,7 +108,8 @@ namespace
     };
 
     class AppleMusicBrowserClient final : public CefClient,
-                                          public CefLifeSpanHandler
+                                          public CefLifeSpanHandler,
+                                          public CefLoadHandler
     {
     public:
         using BrowserCallback = std::function<void(CefRefPtr<CefBrowser>)>;
@@ -94,6 +124,48 @@ namespace
         CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override
         {
             return this;
+        }
+
+        CefRefPtr<CefLoadHandler> GetLoadHandler() override
+        {
+            return this;
+        }
+
+        void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                         ErrorCode errorCode, const CefString& errorText,
+                         const CefString& failedUrl) override
+        {
+            CEF_REQUIRE_UI_THREAD();
+            if (!frame->IsMain() || errorCode == ERR_ABORTED)
+                return;
+
+            const auto description = errorText.ToString();
+            const auto url = failedUrl.ToString();
+            logBrowserError("Apple Music navigation failed (" + std::to_string(errorCode)
+                            + "): " + description + " [" + url + "]");
+
+            const auto page =
+                "<!doctype html><html lang=\"ru\"><meta charset=\"utf-8\">"
+                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                "<title>Не удалось загрузить Apple Music</title>"
+                "<body style=\"margin:0;background:#10131a;color:#eee;font:16px sans-serif\">"
+                "<main style=\"max-width:700px;margin:12vh auto;padding:24px\">"
+                "<h2>Не удалось загрузить Apple Music</h2>"
+                "<p>Проверьте подключение к интернету и попробуйте открыть страницу снова.</p>"
+                "<p>Код ошибки Chromium: " + std::to_string(errorCode) + "</p>"
+                "<p>" + escapeHtml(description) + "</p>"
+                "<p>Адрес: " + escapeHtml(url) + "</p></main></body></html>";
+            frame->LoadString(page, failedUrl);
+        }
+
+        void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                       int httpStatusCode) override
+        {
+            CEF_REQUIRE_UI_THREAD();
+            if (frame->IsMain())
+                logBrowserError("Apple Music navigation completed (HTTP "
+                                + std::to_string(httpStatusCode) + "): "
+                                + frame->GetURL().ToString());
         }
 
         void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
@@ -178,7 +250,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
             return false;
         }
 
-        const auto logFile = cacheRoot.getChildFile("cef.log");
+        cefLogFile = cacheRoot.getChildFile("cef.log");
         CefMainArgs mainArgs(argc, argv);
         CefSettings settings;
         settings.external_message_pump = true;
@@ -186,7 +258,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         settings.log_severity = LOGSEVERITY_INFO;
         CefString(&settings.browser_subprocess_path) =
             helperExecutable.getFullPathName().toStdString();
-        CefString(&settings.log_file) = logFile.getFullPathName().toStdString();
+        CefString(&settings.log_file) = cefLogFile.getFullPathName().toStdString();
         CefString(&settings.root_cache_path) = cacheRoot.getFullPathName().toStdString();
         CefString(&settings.cache_path) = cachePath.getFullPathName().toStdString();
 
@@ -195,7 +267,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         {
             error = juce::String::fromUTF8(
                 "Chromium не смог запуститься (CEF initialization failed).\nЖурнал: ")
-                    + logFile.getFullPathName();
+                    + cefLogFile.getFullPathName();
             startupError = error;
             return false;
         }
