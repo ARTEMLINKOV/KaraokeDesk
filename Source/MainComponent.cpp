@@ -1078,15 +1078,20 @@ void MainComponent::openAppleMusic()
     engine.setActiveBrowserChannel(3);
     youtube.setVisible(false);
     appleMusicWeb.setVisible(true);
-    if (appleMusicOpenPending && !appleMusicWeb.isBrowserCreated())
+    if (appleMusicWeb.isBrowserCreated())
+    {
+        appleMusicOpenPending = false;
+        appleMusicPageOpened = true;
+        appleMusicStatus = utf8("Apple Music: браузер запущен");
+    }
+    else if (appleMusicOpenPending)
     {
         appleMusicStatus = utf8("Apple Music: браузер запускается…");
         status.setText(appleMusicStatus, juce::dontSendNotification);
         status.setTooltip(appleMusicStatus);
         return;
     }
-
-    if (!appleMusicWeb.loadUrl("https://music.apple.com/"))
+    else if (!appleMusicPageOpened && !appleMusicWeb.loadUrl("https://music.apple.com/"))
     {
         appleMusicOpenPending = false;
         appleMusicPageOpened = false;
@@ -1103,12 +1108,14 @@ void MainComponent::openAppleMusic()
         return;
     }
 
-    appleMusicOpenPending = !appleMusicWeb.isBrowserCreated();
-    appleMusicOpenStartedMs = juce::Time::getMillisecondCounterHiRes();
-    appleMusicPageOpened = appleMusicWeb.isBrowserCreated();
-    appleMusicStatus = utf8("Apple Music: открываю страницу…");
-    status.setText(appleMusicStatus, juce::dontSendNotification);
-    status.setTooltip(appleMusicStatus);
+    if (!appleMusicPageOpened)
+    {
+        appleMusicOpenPending = true;
+        appleMusicOpenStartedMs = juce::Time::getMillisecondCounterHiRes();
+        appleMusicStatus = utf8("Apple Music: открываю страницу…");
+        status.setText(appleMusicStatus, juce::dontSendNotification);
+        status.setTooltip(appleMusicStatus);
+    }
 
     if (monitorButton.getToggleState())
     {
@@ -1424,8 +1431,7 @@ void MainComponent::timerCallback()
             appleMusicOpenPending = false;
             appleMusicPageOpened = false;
             appleMusicStatus = utf8("Apple Music: Chromium не создал браузер. Журнал: ")
-                + juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                    .getChildFile("KaraokeDesk/AppleMusicChromium/cef.log").getFullPathName();
+                + getAppleMusicChromiumLogPath();
             juce::AlertWindow::showMessageBoxAsync(
                 juce::MessageBoxIconType::WarningIcon,
                 utf8("Не удалось запустить Apple Music"),

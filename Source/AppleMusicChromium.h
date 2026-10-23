@@ -23,4 +23,5 @@ private:
 bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error);
 void shutdownAppleMusicChromium();
 juce::String getAppleMusicChromiumStartupError();
+juce::String getAppleMusicChromiumLogPath();
 #endif
