@@ -121,6 +121,9 @@ private:
     bool appleMusicTrackRecording = false;
     bool appleMusicCaptureRequested = false;
     bool appleMusicPageOpened = false;
+    bool appleMusicOpenPending = false;
+    double appleMusicOpenStartedMs = 0.0;
+    juce::String appleMusicStatus;
     bool youtubePageOpened = false;
     int activeBrowserChannel = 2;
     std::atomic<bool> skipPluginRequested { false };
