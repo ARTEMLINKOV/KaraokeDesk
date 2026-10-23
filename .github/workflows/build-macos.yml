@@ -17,7 +17,7 @@ jobs:
   build:
     runs-on: macos-15-intel
     env:
-      CCACHE_DIR: ${{ runner.temp }}/ccache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - name: Checkout KaraokeDesk
         uses: actions/checkout@v4
@@ -25,10 +25,13 @@ jobs:
       - name: Install CMake
         run: brew install ccache cmake
 
+      - name: Prepare compiler cache directory
+        run: mkdir -p "$CCACHE_DIR"
+
       - name: Cache compiler outputs
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/ccache
+          path: ${{ github.workspace }}/.ccache
           key: macos-15-intel-ccache-cef156-${{ hashFiles('CMakeLists.txt', 'Source/**') }}-${{ github.sha }}
           restore-keys: |
             macos-15-intel-ccache-cef156-${{ hashFiles('CMakeLists.txt', 'Source/**') }}-
