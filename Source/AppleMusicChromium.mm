@@ -125,13 +125,7 @@ namespace
 
         void OnScheduleMessagePumpWork(int64_t delayMs) override
         {
-            if (delayMs < 0)
-            {
-                ++pumpCancellationGeneration;
-                return;
-            }
-
-            const auto cancellationGeneration = pumpCancellationGeneration.load();
+            const auto cancellationGeneration = ++pumpCancellationGeneration;
             if (scheduledPumpCalls.fetch_add(1) < 10)
                 logBrowserError("CEF scheduled message pump (delay "
                                 + std::to_string(delayMs) + " ms).");
