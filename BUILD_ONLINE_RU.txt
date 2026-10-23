@@ -1,7 +1,7 @@
 СБОРКА KARAOKEDESK В ОБЛАКЕ (без установки Xcode/CMake на своём Mac)
 
 Этот проект содержит GitHub Actions workflow: .github/workflows/build-macos.yml.
-Он автоматически запускает сборку на macOS и сохраняет KaraokeDesk-macOS.zip как артефакт.
+Он автоматически запускает сборку на macOS и сохраняет архив приложения KaraokeDesk.app.zip как артефакт.
 
 КАК ПОЛУЧИТЬ ПРИЛОЖЕНИЕ
 1. Открой https://github.com/ и войди в аккаунт (или создай его).
@@ -13,8 +13,8 @@
    или командную строку с git; workflow обязан находиться по пути .github/workflows/build-macos.yml.
 6. Нажми Commit changes. После отправки файлов сборка должна запуститься автоматически.
 7. Открой вкладку Actions в репозитории и выбери последний запуск "Build KaraokeDesk for macOS".
-8. Дождись зелёной галочки. Внизу страницы запуска в разделе Artifacts скачай KaraokeDesk-macOS.
-9. Распакуй ZIP на Mac и перенеси KaraokeDesk.app в папку Applications (Программы).
+8. Дождись зелёной галочки. Внизу страницы запуска в разделе Artifacts скачай KaraokeDesk-app.
+9. Распакуй скачанный архив артефакта, затем распакуй KaraokeDesk.app.zip и перенеси KaraokeDesk.app в папку Applications (Программы).
 
 ЕСЛИ СБОРКА УПАЛА
 Открой неудачный запуск во вкладке Actions, нажми на красный шаг и скопируй сюда последние 30–50 строк лога.

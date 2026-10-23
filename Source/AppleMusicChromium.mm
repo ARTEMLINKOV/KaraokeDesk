@@ -139,7 +139,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
 
     if (!libraryLoader.LoadInMain())
     {
-        error = "Не удалось загрузить Chromium Embedded Framework.";
+        error = juce::String::fromUTF8("Не удалось загрузить Chromium Embedded Framework.");
         startupError = error;
         return false;
     }
@@ -149,7 +149,19 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         [NSApplication sharedApplication];
         if (![NSApp isKindOfClass:[KaraokeDeskCEFApplication class]])
         {
-            error = "В приложении не настроен главный класс CEF.";
+            error = juce::String::fromUTF8("В приложении не настроен главный класс CEF.");
+            startupError = error;
+            return false;
+        }
+
+        const auto contentsDirectory = juce::File::getSpecialLocation(
+            juce::File::currentExecutableFile).getParentDirectory().getParentDirectory();
+        const auto helperExecutable = contentsDirectory.getChildFile(
+            "Frameworks/KaraokeDesk Helper.app/Contents/MacOS/KaraokeDesk Helper");
+        if (!helperExecutable.existsAsFile())
+        {
+            error = juce::String::fromUTF8("Не найден Chromium helper: ")
+                    + helperExecutable.getFullPathName();
             startupError = error;
             return false;
         }
@@ -160,23 +172,30 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         const auto cachePath = cacheRoot.getChildFile("Default");
         if (auto result = cachePath.createDirectory(); result.failed())
         {
-            error = "Не удалось создать профиль Chromium: " + result.getErrorMessage();
+            error = juce::String::fromUTF8("Не удалось создать профиль Chromium: ")
+                    + result.getErrorMessage();
             startupError = error;
             return false;
         }
 
+        const auto logFile = cacheRoot.getChildFile("cef.log");
         CefMainArgs mainArgs(argc, argv);
         CefSettings settings;
         settings.external_message_pump = true;
         settings.persist_session_cookies = true;
-        settings.log_severity = LOGSEVERITY_WARNING;
+        settings.log_severity = LOGSEVERITY_INFO;
+        CefString(&settings.browser_subprocess_path) =
+            helperExecutable.getFullPathName().toStdString();
+        CefString(&settings.log_file) = logFile.getFullPathName().toStdString();
         CefString(&settings.root_cache_path) = cacheRoot.getFullPathName().toStdString();
         CefString(&settings.cache_path) = cachePath.getFullPathName().toStdString();
 
         CefRefPtr<KaraokeDeskCefApp> app(new KaraokeDeskCefApp());
         if (!CefInitialize(mainArgs, settings, app.get(), nullptr))
         {
-            error = "Chromium не смог запуститься (CEF initialization failed).";
+            error = juce::String::fromUTF8(
+                "Chromium не смог запуститься (CEF initialization failed).\nЖурнал: ")
+                    + logFile.getFullPathName();
             startupError = error;
             return false;
         }
