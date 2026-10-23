@@ -33,15 +33,11 @@ public:
     void setMasterGain(float gain);
     void setChannelInput(int channel, int inputIndex);
     void setLoopbackInputChannels(int leftInputIndex, int rightInputIndex);
-    void setActiveBrowserChannel(int channel);
     bool hasLoopbackInput() const;
     void setChannelMuted(int channel, bool muted);
     void setChannelSolo(int channel, bool solo);
-    void setAppleMusicVocalReduction(bool enabled);
     void pushYoutubeAudio(const float* const* inputChannelData,
                           int numInputChannels, int numSamples);
-    void pushAppleMusicAudio(const float* const* inputChannelData,
-                             int numInputChannels, int numSamples);
     bool startRecording(const juce::File& directory, bool mic1, bool mic2,
                         bool master, juce::String& error);
     void stopRecording();
@@ -59,7 +55,7 @@ private:
     juce::AudioDeviceManager deviceManager;
     juce::AudioPluginFormatManager formats;
     juce::OwnedArray<juce::PluginDescription> descriptions;
-    std::vector<PluginSlot> chains[5];
+    std::vector<PluginSlot> chains[4];
     mutable juce::CriticalSection pluginLock;
     juce::CriticalSection formatLock;
     juce::CriticalSection recordingLock;
@@ -67,26 +63,21 @@ private:
     int blockSize = 512;
     int processingCapacity = 8192;
     bool audioCallbackRegistered = false;
-    std::atomic<float> channelGain[5] { 0.8f, 0.8f, 0.8f, 0.8f, 0.65f };
-    std::atomic<float> masterGain { 0.65f };
+    std::atomic<float> channelGain[4] { 0.8f, 0.8f, 0.8f, 0.65f };
     std::atomic<int> channelInput[2] { 0, 1 };
     std::atomic<int> loopbackInputChannels[2] { -1, -1 };
-    std::atomic<int> activeBrowserChannel { 2 };
-    std::atomic<bool> channelMuted[5] { false, false, false, false, false };
-    std::atomic<bool> channelSolo[5] { false, false, false, false, false };
-    std::atomic<float> channelPeak[5] { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+    std::atomic<bool> channelMuted[4] { false, false, false, false };
+    std::atomic<bool> channelSolo[4] { false, false, false, false };
+    std::atomic<float> channelPeak[4] { 0.0f, 0.0f, 0.0f, 0.0f };
     std::atomic<float> masterPeak { 0.0f };
-    std::atomic<bool> appleMusicVocalReduction { false };
     juce::TimeSliceThread recordingThread { "KaraokeDesk recording writer" };
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> microphoneRecorders[2];
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> masterRecorder;
     std::atomic<bool> recording { false };
     juce::File recordingDirectory;
-    juce::AudioBuffer<float> processingBuffers[5];
+    juce::AudioBuffer<float> processingBuffers[4];
     juce::AbstractFifo youtubeFifo { 48000 * 10 };
     juce::AudioBuffer<float> youtubeFifoBuffer { 2, 48000 * 10 };
-    juce::AbstractFifo appleMusicFifo { 48000 * 10 };
-    juce::AudioBuffer<float> appleMusicFifoBuffer { 2, 48000 * 10 };
     juce::File settingsFile;
     juce::File pluginCacheFile;
     juce::FileSearchPath pluginSearchPaths;

@@ -432,7 +432,7 @@ bool KaraokeAudioEngine::addPluginToChannel(
     const juce::String& pluginName,
     juce::String& error)
 {
-    if (channel < 0 || channel >= 5)
+    if (channel < 0 || channel >= 4)
     {
         error = juce::String::fromUTF8("Недопустимый номер канала.");
         return false;
@@ -461,7 +461,7 @@ bool KaraokeAudioEngine::setPluginInChannelSlot(
     const juce::String& pluginName,
     juce::String& error)
 {
-    if (channel < 0 || channel >= 5 || slot < 0 || slot >= 4)
+    if (channel < 0 || channel >= 4 || slot < 0 || slot >= 4)
     {
         error = juce::String::fromUTF8("Недопустимый слот эффекта.");
         return false;
@@ -537,7 +537,7 @@ bool KaraokeAudioEngine::setPluginInChannelSlot(
 
 juce::AudioProcessorEditor* KaraokeAudioEngine::getPluginEditor(int channel, int slot)
 {
-    if (channel < 0 || channel >= 5 || slot < 0 || slot >= 4)
+    if (channel < 0 || channel >= 4 || slot < 0 || slot >= 4)
         return nullptr;
 
     const juce::ScopedLock lock(pluginLock);
@@ -553,7 +553,7 @@ juce::AudioProcessorEditor* KaraokeAudioEngine::getPluginEditor(int channel, int
 
 void KaraokeAudioEngine::clearChannel(int channel)
 {
-    if (channel < 0 || channel >= 5)
+    if (channel < 0 || channel >= 4)
         return;
 
     juce::ScopedLock lock(pluginLock);
@@ -562,7 +562,7 @@ void KaraokeAudioEngine::clearChannel(int channel)
 
 void KaraokeAudioEngine::setChannelGain(int channel, float gain)
 {
-    if (channel < 0 || channel >= 5)
+    if (channel < 0 || channel >= 4)
         return;
 
     channelGain[channel].store(juce::jlimit(0.0f, juce::Decibels::decibelsToGain(10.0f), gain));
@@ -571,8 +571,7 @@ void KaraokeAudioEngine::setChannelGain(int channel, float gain)
 void KaraokeAudioEngine::setMasterGain(float gain)
 {
     const auto limited = juce::jlimit(0.0f, juce::Decibels::decibelsToGain(10.0f), gain);
-    masterGain.store(limited);
-    channelGain[4].store(limited);
+    channelGain[3].store(limited);
 }
 
 void KaraokeAudioEngine::setChannelInput(int channel, int inputIndex)
@@ -589,12 +588,6 @@ void KaraokeAudioEngine::setLoopbackInputChannels(int leftInputIndex, int rightI
     loopbackInputChannels[1].store(valid ? rightInputIndex : -1);
 }
 
-void KaraokeAudioEngine::setActiveBrowserChannel(int channel)
-{
-    if (channel == 2 || channel == 3)
-        activeBrowserChannel.store(channel);
-}
-
 bool KaraokeAudioEngine::hasLoopbackInput() const
 {
     return loopbackInputChannels[0].load() >= 0
@@ -603,19 +596,14 @@ bool KaraokeAudioEngine::hasLoopbackInput() const
 
 void KaraokeAudioEngine::setChannelMuted(int channel, bool muted)
 {
-    if (channel >= 0 && channel < 5)
+    if (channel >= 0 && channel < 4)
         channelMuted[channel].store(muted);
 }
 
 void KaraokeAudioEngine::setChannelSolo(int channel, bool solo)
 {
-    if (channel >= 0 && channel < 5)
+    if (channel >= 0 && channel < 4)
         channelSolo[channel].store(solo);
-}
-
-void KaraokeAudioEngine::setAppleMusicVocalReduction(bool enabled)
-{
-    appleMusicVocalReduction.store(enabled);
 }
 
 void KaraokeAudioEngine::pushYoutubeAudio(
@@ -647,38 +635,6 @@ void KaraokeAudioEngine::pushYoutubeAudio(
     copySegment(start1, size1, 0);
     copySegment(start2, size2, size1);
     youtubeFifo.finishedWrite(size1 + size2);
-}
-
-void KaraokeAudioEngine::pushAppleMusicAudio(
-    const float* const* inputChannelData, int numInputChannels, int numSamples)
-{
-    if (inputChannelData == nullptr || numInputChannels <= 0 || numSamples <= 0)
-        return;
-
-    int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
-    appleMusicFifo.prepareToWrite(numSamples, start1, size1, start2, size2);
-    const auto copySegment = [&](int destinationStart, int segmentLength, int sourceOffset)
-    {
-        if (segmentLength <= 0)
-            return;
-
-        const int rightInput = numInputChannels > 1 && inputChannelData[1] != nullptr ? 1 : 0;
-        if (inputChannelData[0] != nullptr)
-            appleMusicFifoBuffer.copyFrom(0, destinationStart,
-                inputChannelData[0] + sourceOffset, segmentLength);
-        else
-            appleMusicFifoBuffer.clear(0, destinationStart, segmentLength);
-
-        if (inputChannelData[rightInput] != nullptr)
-            appleMusicFifoBuffer.copyFrom(1, destinationStart,
-                inputChannelData[rightInput] + sourceOffset, segmentLength);
-        else
-            appleMusicFifoBuffer.clear(1, destinationStart, segmentLength);
-    };
-
-    copySegment(start1, size1, 0);
-    copySegment(start2, size2, size1);
-    appleMusicFifo.finishedWrite(size1 + size2);
 }
 
 bool KaraokeAudioEngine::startRecording(
@@ -784,7 +740,7 @@ juce::File KaraokeAudioEngine::getRecordingDirectory() const
 
 float KaraokeAudioEngine::getChannelPeak(int channel) const
 {
-    if (channel < 0 || channel >= 5)
+    if (channel < 0 || channel >= 4)
         return 0.0f;
 
     return channelPeak[channel].load();
@@ -862,7 +818,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
         channelInput[1].load()
     };
     const bool sourceSoloActive = channelSolo[0].load() || channelSolo[1].load()
-        || channelSolo[2].load() || channelSolo[3].load();
+        || channelSolo[2].load();
 
     // The audio callback never waits for the UI thread. While a plugin chain
     // is being edited, this block passes through without effects.
@@ -877,11 +833,11 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
             buffer.setSize(2, chunk, false, false, true);
         const float meterDecay = std::exp(-static_cast<float>(chunk)
             / static_cast<float>(juce::jmax(1.0, sampleRate * 0.24)));
-        auto& masterBuffer = processingBuffers[4];
+        auto& masterBuffer = processingBuffers[3];
         masterBuffer.clear(0, 0, chunk);
         masterBuffer.clear(1, 0, chunk);
 
-        for (int sourceChannel = 0; sourceChannel < 4; ++sourceChannel)
+        for (int sourceChannel = 0; sourceChannel < 3; ++sourceChannel)
         {
             auto& buffer = processingBuffers[sourceChannel];
 
@@ -901,8 +857,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
             {
                 const int leftInput = loopbackInputChannels[0].load();
                 const int rightInput = loopbackInputChannels[1].load();
-                const bool routeToThisChannel = activeBrowserChannel.load() == sourceChannel;
-                const bool hasLoopback = routeToThisChannel
+                const bool hasLoopback = sourceChannel == 2
                     && leftInput < numInputChannels && rightInput < numInputChannels
                     && inputChannelData[leftInput] != nullptr
                     && inputChannelData[rightInput] != nullptr;
@@ -918,30 +873,16 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
             {
                 buffer.clear();
                 int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
-                auto& fifo = sourceChannel == 2 ? youtubeFifo : appleMusicFifo;
-                auto& fifoBuffer = sourceChannel == 2 ? youtubeFifoBuffer : appleMusicFifoBuffer;
-                fifo.prepareToRead(chunk, start1, size1, start2, size2);
+                youtubeFifo.prepareToRead(chunk, start1, size1, start2, size2);
                 if (size1 > 0)
-                    buffer.copyFrom(0, 0, fifoBuffer, 0, start1, size1);
+                    buffer.copyFrom(0, 0, youtubeFifoBuffer, 0, start1, size1);
                 if (size2 > 0)
-                    buffer.copyFrom(0, size1, fifoBuffer, 0, start2, size2);
+                    buffer.copyFrom(0, size1, youtubeFifoBuffer, 0, start2, size2);
                 if (size1 > 0)
-                    buffer.copyFrom(1, 0, fifoBuffer, 1, start1, size1);
+                    buffer.copyFrom(1, 0, youtubeFifoBuffer, 1, start1, size1);
                 if (size2 > 0)
-                    buffer.copyFrom(1, size1, fifoBuffer, 1, start2, size2);
-                fifo.finishedRead(size1 + size2);
-
-                if (sourceChannel == 3 && appleMusicVocalReduction.load())
-                {
-                    auto* left = buffer.getWritePointer(0);
-                    auto* right = buffer.getWritePointer(1);
-                    for (int sample = 0; sample < chunk; ++sample)
-                    {
-                        const auto side = 0.5f * (left[sample] - right[sample]);
-                        left[sample] = side;
-                        right[sample] = -side;
-                    }
-                }
+                    buffer.copyFrom(1, size1, youtubeFifoBuffer, 1, start2, size2);
+                youtubeFifo.finishedRead(size1 + size2);
             }
 
             const bool muted = channelMuted[sourceChannel].load()
@@ -988,12 +929,12 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
                 masterBuffer.getWritePointer(1), buffer.getReadPointer(1), chunk);
         }
 
-        const bool masterMuted = channelMuted[4].load();
+        const bool masterMuted = channelMuted[3].load();
         if (masterMuted)
             masterBuffer.clear();
         if (havePluginLock)
         {
-            for (auto& slot : chains[4])
+            for (auto& slot : chains[3])
             {
                 if (slot.instance != nullptr)
                 {
@@ -1002,7 +943,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
                 }
             }
         }
-        masterBuffer.applyGain(channelGain[4].load());
+        masterBuffer.applyGain(channelGain[3].load());
 
         const auto masterLeft = juce::FloatVectorOperations::findMinAndMax(
             masterBuffer.getReadPointer(0), chunk);
@@ -1014,7 +955,7 @@ void KaraokeAudioEngine::audioDeviceIOCallbackWithContext(
         const auto previousMasterPeak = masterPeak.load();
         const auto masterMeterPeak = juce::jmax(masterChannelPeak,
                                                 previousMasterPeak * meterDecay);
-        channelPeak[4].store(masterMeterPeak);
+        channelPeak[3].store(masterMeterPeak);
         masterPeak.store(masterMeterPeak);
 
         if (haveRecordingLock && masterRecorder != nullptr)

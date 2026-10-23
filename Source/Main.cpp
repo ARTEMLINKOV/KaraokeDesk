@@ -1,6 +1,5 @@
 #include <JuceHeader.h>
 #include "MainComponent.h"
-#include "AppleMusicChromium.h"
 
 #if JUCE_MAC
 extern "C" void configureKaraokeWindowForSpaces(void* nativeWindow);
@@ -29,9 +28,6 @@ public:
     void shutdown() override
     {
         mainWindow = nullptr;
-#if JUCE_MAC
-        shutdownAppleMusicChromium();
-#endif
     }
     void systemRequestedQuit() override { quit(); }
 
@@ -68,16 +64,6 @@ static juce::JUCEApplicationBase* createKaraokeDeskApplication()
 int main(int argc, char* argv[])
 {
     juce::JUCEApplicationBase::createInstance = &createKaraokeDeskApplication;
-
-#if JUCE_MAC
-    const bool isPluginScanHelper = argc > 1
-        && juce::String(argv[1]) == "--karaokedesk-scan-plugin";
-    if (!isPluginScanHelper)
-    {
-        juce::String error;
-        initializeAppleMusicChromium(argc, argv, error);
-    }
-#endif
 
     return juce::JUCEApplicationBase::main(argc, (const char**)argv);
 }

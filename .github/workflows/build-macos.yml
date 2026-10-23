@@ -32,21 +32,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: macos-15-intel-ccache-cef156-${{ hashFiles('CMakeLists.txt', 'Source/**') }}-${{ github.sha }}
+          key: macos-15-intel-ccache-${{ hashFiles('CMakeLists.txt', 'Source/**') }}-${{ github.sha }}
           restore-keys: |
-            macos-15-intel-ccache-cef156-${{ hashFiles('CMakeLists.txt', 'Source/**') }}-
-            macos-15-intel-ccache-cef156-
-
-      - name: Download pinned CEF SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/cef-macos-x86_64.tar.bz2"
-          url="https://cef-builds.spotifycdn.com/cef_binary_156.0.8%2Bg426920c%2Bchromium-156.0.8078.48_macosx64_minimal.tar.bz2"
-          curl --fail --location --retry 3 "$url" --output "$archive"
-          echo "d0829e80257211248ff0798b5b389d7c4faa053515cdf4b2276c0bf8a83aba2e  $archive" | shasum --check
-          tar -xjf "$archive" -C "$RUNNER_TEMP"
-          echo "CEF_ROOT=$RUNNER_TEMP/cef_binary_156.0.8+g426920c+chromium-156.0.8078.48_macosx64_minimal" >> "$GITHUB_ENV"
+            macos-15-intel-ccache-${{ hashFiles('CMakeLists.txt', 'Source/**') }}-
+            macos-15-intel-ccache-
 
       - name: Get JUCE
         run: git clone --depth 1 https://github.com/juce-framework/JUCE.git "$RUNNER_TEMP/JUCE"
@@ -55,7 +44,6 @@ jobs:
         run: >-
           cmake -S . -B build
           -DJUCE_DIR="$RUNNER_TEMP/JUCE"
-          -DCEF_ROOT="$CEF_ROOT"
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_OSX_ARCHITECTURES="x86_64"
           -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
@@ -83,16 +71,6 @@ jobs:
           ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/KaraokeDesk")"
           echo "Built executable architectures: $ARCHS"
           [[ "$ARCHS" == "x86_64" ]]
-          [[ -f "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Chromium Embedded Framework" ]]
-          for helper in \
-            "KaraokeDesk Helper" \
-            "KaraokeDesk Helper (Alerts)" \
-            "KaraokeDesk Helper (GPU)" \
-            "KaraokeDesk Helper (Plugin)" \
-            "KaraokeDesk Helper (Renderer)"; do
-            [[ -x "$APP_PATH/Contents/Frameworks/$helper.app/Contents/MacOS/$helper" ]]
-          done
-          [[ "$(plutil -extract NSPrincipalClass raw "$APP_PATH/Contents/Info.plist")" == "KaraokeDeskCEFApplication" ]]
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" KaraokeDesk.app.zip
 
       - name: Upload app artifact

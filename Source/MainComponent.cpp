@@ -82,26 +82,25 @@ namespace
             mic2.setButtonText(juce::String::fromUTF8("Микрофон 2"));
             master.setButtonText(juce::String::fromUTF8("Мастер"));
             youtube.setButtonText(juce::String::fromUTF8("YouTube / системный звук"));
-            appleMusic.setButtonText(juce::String::fromUTF8("Apple Music"));
-            for (auto* button : { &mic1, &mic2, &master, &youtube, &appleMusic })
+            for (auto* button : { &mic1, &mic2, &master, &youtube })
             {
                 button->setToggleState(true, juce::dontSendNotification);
                 addAndMakeVisible(*button);
             }
-            setSize(340, 180);
+            setSize(340, 140);
         }
 
         void resized() override
         {
             auto area = getLocalBounds().reduced(8, 4);
-            for (auto* button : { &mic1, &mic2, &master, &youtube, &appleMusic })
+            for (auto* button : { &mic1, &mic2, &master, &youtube })
             {
                 button->setBounds(area.removeFromTop(32));
                 area.removeFromTop(2);
             }
         }
 
-        juce::ToggleButton mic1, mic2, master, youtube, appleMusic;
+        juce::ToggleButton mic1, mic2, master, youtube;
     };
 
 }
@@ -291,12 +290,11 @@ MainComponent::MainComponent()
     url.setFont(uiFont(14.0f));
     addAndMakeVisible(url);
 
-    for (auto* b : { &openButton, &appleMusicButton, &mixerToggle, &settingsToggle, &scanPluginsButton,
+    for (auto* b : { &openButton, &mixerToggle, &settingsToggle, &scanPluginsButton,
                      &skipPluginButton, &addPluginDirectoryButton, &recordButton,
                      &monitorButton, &stopButton,
                      &muteButtons[0], &muteButtons[1], &muteButtons[2], &muteButtons[3],
-                     &muteButtons[4], &soloButtons[0], &soloButtons[1], &soloButtons[2],
-                     &soloButtons[3], &soloButtons[4] })
+                     &soloButtons[0], &soloButtons[1], &soloButtons[2], &soloButtons[3] })
     {
         styleIconButton(*b, {});
         addAndMakeVisible(*b);
@@ -304,9 +302,6 @@ MainComponent::MainComponent()
     openButton.setTooltip(utf8("Открыть видео"));
     openButton.onClick = [this] { openYoutube(); };
     openButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffd92323));
-    appleMusicButton.setTooltip(utf8("Открыть Apple Music"));
-    appleMusicButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xfffa2d55));
-    appleMusicButton.onClick = [this] { openAppleMusic(); };
     settingsToggle.onClick = [this]
     {
         settingsVisible = !settingsVisible;
@@ -331,10 +326,7 @@ MainComponent::MainComponent()
             status.setText(engine.getStatus(), juce::dontSendNotification);
             if (engine.getDeviceManager().getCurrentAudioDevice() != nullptr)
             {
-                if (engine.hasLoopbackInput())
-                    engine.setActiveBrowserChannel(activeBrowserChannel);
-                else if ((activeBrowserChannel == 3 && appleMusicPageOpened)
-                         || (activeBrowserChannel == 2 && youtubePageOpened))
+                if (!engine.hasLoopbackInput() && youtubePageOpened)
                     showLoopbackSetupWarning();
             }
         }
@@ -347,11 +339,6 @@ MainComponent::MainComponent()
                 youtubeCapture.stop();
                 youtubeCaptureRequested = false;
             }
-            if (!recordingRunning || !appleMusicTrackRecording)
-            {
-                appleMusicCapture.stop();
-                appleMusicCaptureRequested = false;
-            }
             setYoutubeVolume();
             status.setText(engine.getStatus(), juce::dontSendNotification);
         }
@@ -363,9 +350,7 @@ MainComponent::MainComponent()
             stopRecording();
         monitorButton.setToggleState(false, juce::dontSendNotification);
         youtubeCapture.stop();
-        appleMusicCapture.stop();
         youtubeCaptureRequested = false;
-        appleMusicCaptureRequested = false;
         setYoutubeVolume();
         engine.stop();
         status.setText(engine.getStatus(), juce::dontSendNotification);
@@ -420,7 +405,6 @@ MainComponent::MainComponent()
     setupLabel(ch2Title, utf8("МИКРОФОН 2"), 15.0f);
     setupLabel(masterTitle, utf8("МАСТЕР"), 15.0f);
     setupLabel(youtubeTitle, utf8("YOUTUBE"), 15.0f);
-    setupLabel(appleMusicTitle, utf8("APPLE MUSIC"), 15.0f);
     setupLabel(inputDeviceTitle, utf8("ВХОД"), 13.0f);
     setupLabel(sampleRateTitle, utf8("ЧАСТОТА"), 11.0f);
     setupLabel(bufferSizeTitle, utf8("БУФЕР / ЗАДЕРЖКА"), 11.0f);
@@ -458,7 +442,7 @@ MainComponent::MainComponent()
         addAndMakeVisible(selector);
     }
 
-    for (int channel = 0; channel < 5; ++channel)
+    for (int channel = 0; channel < 4; ++channel)
     {
         muteButtons[channel].setClickingTogglesState(true);
         muteButtons[channel].setTooltip(utf8("Mute"));
@@ -486,7 +470,6 @@ MainComponent::MainComponent()
     styleSlider(gain2, juce::Decibels::gainToDecibels(0.8), -60.0, 10.0);
     styleSlider(master, juce::Decibels::gainToDecibels(0.65), -60.0, 10.0);
     styleSlider(youtubeVolume, juce::Decibels::gainToDecibels(0.8), -60.0, 10.0);
-    styleSlider(appleMusicVolume, juce::Decibels::gainToDecibels(0.8), -60.0, 10.0);
     gain1.onValueChange = [this] { engine.setChannelGain(0, juce::Decibels::decibelsToGain((float) gain1.getValue())); };
     gain2.onValueChange = [this] { engine.setChannelGain(1, juce::Decibels::decibelsToGain((float) gain2.getValue())); };
     master.onValueChange = [this] { engine.setMasterGain(juce::Decibels::decibelsToGain((float) master.getValue())); };
@@ -496,25 +479,9 @@ MainComponent::MainComponent()
             static_cast<float>(youtubeVolume.getValue())));
         setYoutubeVolume();
     };
-    appleMusicVolume.onValueChange = [this]
-    {
-        engine.setChannelGain(3, juce::Decibels::decibelsToGain(
-            static_cast<float>(appleMusicVolume.getValue())));
-    };
-    vocalReductionButton.setClickingTogglesState(true);
-    vocalReductionButton.setTooltip(utf8("Подавить центральный вокал (может затронуть другие центральные инструменты)"));
-    vocalReductionButton.onClick = [this]
-    {
-        const bool enabled = vocalReductionButton.getToggleState();
-        engine.setAppleMusicVocalReduction(enabled);
-        vocalReductionButton.setColour(juce::TextButton::buttonOnColourId,
-                                       enabled ? juce::Colours::orange : cyan);
-    };
-    styleIconButton(vocalReductionButton, utf8("Подавить центральный вокал"));
-    addAndMakeVisible(vocalReductionButton);
 
     pluginNames = engine.getAvailablePluginNames();
-    for (int channel = 0; channel < 5; ++channel)
+    for (int channel = 0; channel < 4; ++channel)
     {
         for (int slot = 0; slot < 4; ++slot)
         {
@@ -541,8 +508,6 @@ MainComponent::MainComponent()
 
     addAndMakeVisible(youtube);
     youtube.setVisible(false);
-    addAndMakeVisible(appleMusicWeb);
-    appleMusicWeb.setVisible(false);
     youtube.onNewWindow = [this](const juce::String& newURL) { showWebPopup(newURL); };
     startTimerHz(30);
 }
@@ -555,7 +520,6 @@ MainComponent::~MainComponent()
         for (auto& window : channelWindows)
             window.reset();
     youtubeCapture.stop();
-    appleMusicCapture.stop();
     themeColourSelector.removeChangeListener(this);
     engine.getDeviceManager().removeChangeListener(this);
     pluginScanPool.removeAllJobs(true, -1);
@@ -584,11 +548,10 @@ void MainComponent::applyAccentColour(juce::Colour colour)
     cyan = colour.brighter(0.48f);
     engine.setAccentColour(colour);
 
-    for (auto* button : { &openButton, &appleMusicButton, &mixerToggle, &settingsToggle, &scanPluginsButton,
+    for (auto* button : { &openButton, &mixerToggle, &settingsToggle, &scanPluginsButton,
                           &addPluginDirectoryButton, &recordButton, &monitorButton, &stopButton })
         styleButton(*button);
     openButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffd92323));
-    appleMusicButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xfffa2d55));
     for (auto& button : muteButtons)
         button.setColour(juce::TextButton::buttonOnColourId,
                          button.getToggleState() ? juce::Colours::red : cyan);
@@ -597,7 +560,6 @@ void MainComponent::applyAccentColour(juce::Colour colour)
                          button.getToggleState() ? juce::Colours::orange : cyan);
     for (auto* slider : { &gain1, &gain2, &master, &youtubeVolume })
         slider->setColour(juce::Slider::thumbColourId, cyan);
-    appleMusicVolume.setColour(juce::Slider::thumbColourId, cyan);
     themeColourSelector.setCurrentColour(colour, juce::dontSendNotification);
     recordingResult.setColour(juce::Label::textColourId, cyan);
     repaint();
@@ -668,8 +630,7 @@ void MainComponent::showRecordingOptions()
     const bool recordMic2 = options.mic2.getToggleState();
     const bool recordMaster = options.master.getToggleState();
     const bool recordYoutube = options.youtube.getToggleState();
-    const bool recordAppleMusic = options.appleMusic.getToggleState();
-    if (!recordMic1 && !recordMic2 && !recordMaster && !recordYoutube && !recordAppleMusic)
+    if (!recordMic1 && !recordMic2 && !recordMaster && !recordYoutube)
     {
         recordingResult.setText(utf8("Выбери хотя бы один источник."),
                                 juce::dontSendNotification);
@@ -715,16 +676,6 @@ void MainComponent::showRecordingOptions()
         youtubeTrackRecording = true;
     }
 
-    if (recordAppleMusic)
-    {
-        openAppleMusic();
-        const auto appleMusicFile = directory.getChildFile("AppleMusic_" + timestamp + ".caf");
-        appleMusicCapture.stop();
-        appleMusicCaptureRequested = false;
-        startAppleMusicCapture(appleMusicFile);
-        appleMusicTrackRecording = true;
-    }
-
     currentRecordingDirectory = directory;
     recordingRunning = true;
     recordButton.setButtonText(utf8("■"));
@@ -742,14 +693,6 @@ void MainComponent::stopRecording()
         youtubeTrackRecording = false;
         if (monitorButton.getToggleState())
             startYoutubeMixerCapture({});
-    }
-    if (appleMusicTrackRecording)
-    {
-        appleMusicCapture.stop();
-        appleMusicCaptureRequested = false;
-        appleMusicTrackRecording = false;
-        if (monitorButton.getToggleState())
-            startAppleMusicCapture({});
     }
     engine.stopRecording();
     recordingRunning = false;
@@ -900,16 +843,14 @@ void MainComponent::refreshInputChannels()
     engine.setLoopbackInputChannels(loopbackLeft, loopbackRight);
     const bool hasLoopbackInput = engine.hasLoopbackInput();
     inputDevice.setTooltip(hasLoopbackInput
-        ? utf8("BlackHole найден: браузерный звук поступает в микшер через агрегированное устройство.")
-        : utf8("Для маршрутизации звука страницы через микшер добавьте BlackHole 2ch и EVO4 в агрегированное входное устройство."));
+        ? utf8("BlackHole найден: звук YouTube поступает в микшер через агрегированное устройство.")
+        : utf8("Для маршрутизации звука YouTube через микшер добавьте BlackHole 2ch и EVO4 в агрегированное входное устройство."));
     if (hasLoopbackInput != hadLoopbackInput)
     {
         if (hasLoopbackInput)
         {
             youtubeCapture.stop();
-            appleMusicCapture.stop();
             youtubeCaptureRequested = false;
-            appleMusicCaptureRequested = false;
         }
         else if (monitorButton.getToggleState())
             showLoopbackSetupWarning();
@@ -1023,7 +964,7 @@ void MainComponent::selectInputChannel(int channel)
 
 void MainComponent::updatePluginLists()
 {
-    for (int channel = 0; channel < 5; ++channel)
+    for (int channel = 0; channel < 4; ++channel)
     {
         for (int slot = 0; slot < 4; ++slot)
         {
@@ -1043,17 +984,12 @@ void MainComponent::updatePluginLists()
 
 void MainComponent::openYoutube()
 {
-    appleMusicWeb.setVisible(false);
-    appleMusicWeb.pauseMedia();
-
     auto s = url.getText().trim();
     if (s.isNotEmpty())
     {
         if (!s.startsWithIgnoreCase("https://") && !s.startsWithIgnoreCase("http://"))
             s = "https://" + s;
         youtubePageOpened = true;
-        activeBrowserChannel = 2;
-        engine.setActiveBrowserChannel(2);
         youtube.setVisible(true);
         youtube.goToURL(s);
         if (monitorButton.getToggleState() && !engine.hasLoopbackInput())
@@ -1071,70 +1007,6 @@ void MainComponent::showWebPopup(const juce::String& newURL)
     webPopupWindow->navigateTo(newURL);
 }
 
-void MainComponent::openAppleMusic()
-{
-    youtube.evaluateJavascript("document.querySelectorAll('audio,video').forEach(e=>e.pause());");
-    activeBrowserChannel = 3;
-    engine.setActiveBrowserChannel(3);
-    youtube.setVisible(false);
-    appleMusicWeb.setVisible(true);
-    if (appleMusicWeb.isBrowserCreated())
-    {
-        appleMusicOpenPending = false;
-        appleMusicPageOpened = true;
-        appleMusicStatus = utf8("Apple Music: браузер запущен");
-    }
-    else if (appleMusicOpenPending)
-    {
-        appleMusicStatus = utf8("Apple Music: браузер запускается…");
-        status.setText(appleMusicStatus, juce::dontSendNotification);
-        status.setTooltip(appleMusicStatus);
-        return;
-    }
-    else if (!appleMusicPageOpened && !appleMusicWeb.loadUrl("https://music.apple.com/"))
-    {
-        appleMusicOpenPending = false;
-        appleMusicPageOpened = false;
-        appleMusicWeb.setVisible(false);
-        appleMusicStatus = getAppleMusicChromiumStartupError();
-        if (appleMusicStatus.isEmpty())
-            appleMusicStatus = utf8("Не удалось создать встроенный браузер.");
-        status.setText(utf8("Ошибка Apple Music"), juce::dontSendNotification);
-        status.setTooltip(appleMusicStatus);
-        juce::AlertWindow::showMessageBoxAsync(
-            juce::MessageBoxIconType::WarningIcon,
-            utf8("Не удалось открыть Apple Music"),
-            appleMusicStatus);
-        return;
-    }
-
-    if (!appleMusicPageOpened)
-    {
-        appleMusicOpenPending = true;
-        appleMusicOpenStartedMs = juce::Time::getMillisecondCounterHiRes();
-        appleMusicStatus = utf8("Apple Music: открываю страницу…");
-        status.setText(appleMusicStatus, juce::dontSendNotification);
-        status.setTooltip(appleMusicStatus);
-    }
-
-    if (monitorButton.getToggleState())
-    {
-        if (engine.hasLoopbackInput())
-        {
-            youtubeCapture.stop();
-            appleMusicCapture.stop();
-            youtubeCaptureRequested = false;
-            appleMusicCaptureRequested = false;
-        }
-        else if (!appleMusicCaptureRequested)
-        {
-            youtubeCapture.stop();
-            youtubeCaptureRequested = false;
-            showLoopbackSetupWarning();
-        }
-    }
-}
-
 void MainComponent::setYoutubeVolume()
 {
     if (engine.hasLoopbackInput())
@@ -1147,7 +1019,7 @@ void MainComponent::setYoutubeVolume()
     const auto gain = juce::Decibels::decibelsToGain(
         static_cast<float>(youtubeVolume.getValue()));
     bool anySourceSolo = false;
-    for (int channel = 0; channel < 4; ++channel)
+    for (int channel = 0; channel < 3; ++channel)
         anySourceSolo = anySourceSolo || soloButtons[channel].getToggleState();
     const bool shouldMuteVideo = (!engine.hasLoopbackInput()
         && (youtubeCaptureRequested || youtubeCapture.isCapturing()))
@@ -1202,81 +1074,18 @@ void MainComponent::startYoutubeMixerCapture(const juce::File& destination)
     setYoutubeVolume();
 }
 
-void MainComponent::startAppleMusicCapture(const juce::File& destination)
-{
-    if (engine.hasLoopbackInput() && destination.getFullPathName().isEmpty())
-        return;
-
-    if (!appleMusicPageOpened || appleMusicCaptureRequested || appleMusicCapture.isCapturing())
-        return;
-
-    appleMusicCaptureRequested = true;
-    juce::Component::SafePointer<MainComponent> safeThis(this);
-    juce::Timer::callAfterDelay(1500, [safeThis, destination]
-    {
-        if (safeThis == nullptr || !safeThis->appleMusicCaptureRequested)
-            return;
-
-        auto* device = safeThis->engine.getDeviceManager().getCurrentAudioDevice();
-        if (device == nullptr)
-        {
-            safeThis->appleMusicCaptureRequested = false;
-            return;
-        }
-
-        safeThis->appleMusicCapture.start(destination, device->getCurrentSampleRate(),
-        [safeThis](
-            const float* const* channels, int channelCount, int samples)
-        {
-            if (safeThis != nullptr && !safeThis->engine.hasLoopbackInput())
-                safeThis->engine.pushAppleMusicAudio(channels, channelCount, samples);
-        },
-        [safeThis](const juce::String& message)
-        {
-            if (safeThis == nullptr || message.isEmpty())
-                return;
-            juce::MessageManager::callAsync([safeThis, message]
-            {
-                if (safeThis == nullptr)
-                    return;
-                safeThis->appleMusicCapture.stop();
-                safeThis->appleMusicCaptureRequested = false;
-                safeThis->setAppleMusicCaptureError(message);
-            });
-        }, juce::StringArray {
-            "com.karaokedesk.app.helper",
-            "com.karaokedesk.app.helper.renderer",
-            "com.karaokedesk.app.helper.gpu"
-        });
-    });
-}
-
-void MainComponent::setAppleMusicCaptureError(const juce::String& message)
-{
-    status.setText(utf8("Захват Apple Music: ") + message, juce::dontSendNotification);
-    const auto lowerMessage = message.toLowerCase();
-    const auto detail = lowerMessage.contains("denied")
-        ? utf8("macOS запретила запись аудио. Откройте System Settings > Privacy & Security > Screen & System Audio Recording, разрешите KaraokeDesk и перезапустите приложение.")
-        : lowerMessage.contains("не найдено приложение")
-            ? utf8("Не найден аудиопроцесс встроенной страницы. Подождите, пока загрузится music.apple.com, и включите мониторинг ещё раз.")
-            : message;
-    juce::AlertWindow::showMessageBoxAsync(
-        juce::MessageBoxIconType::WarningIcon,
-        utf8("Не удалось запустить канал Apple Music"), detail);
-}
-
 void MainComponent::showLoopbackSetupWarning()
 {
     status.setText(
-        utf8("Добавьте BlackHole 2ch во входной Aggregate Device для сквозного микширования."),
+        utf8("Добавьте BlackHole 2ch во входной Aggregate Device для микширования YouTube."),
         juce::dontSendNotification);
     if (loopbackWarningShown)
         return;
     loopbackWarningShown = true;
     juce::AlertWindow::showMessageBoxAsync(
         juce::MessageBoxIconType::WarningIcon,
-        utf8("Не настроен аудиомаршрут браузера"),
-        utf8("Чтобы фейдеры и вырезание вокала обрабатывали звук страницы, установите BlackHole 2ch, "
+        utf8("Не настроен аудиомаршрут YouTube"),
+        utf8("Чтобы фейдеры обрабатывали звук YouTube, установите BlackHole 2ch, "
              "добавьте его вместе с EVO4 в Aggregate Device, выберите агрегат как вход KaraokeDesk, "
              "а BlackHole — как системный вывод macOS."));
 }
@@ -1394,7 +1203,7 @@ void MainComponent::setPluginSlot(int channel, int slot)
 
 void MainComponent::showPluginEditor(int channel, int slot)
 {
-    if (channel < 0 || channel >= 5 || slot < 0 || slot >= 4)
+    if (channel < 0 || channel >= 4 || slot < 0 || slot >= 4)
         return;
 
     auto& window = pluginEditorWindows[channel][slot];
@@ -1418,33 +1227,7 @@ void MainComponent::showPluginEditor(int channel, int slot)
 
 void MainComponent::timerCallback()
 {
-    if (appleMusicOpenPending)
-    {
-        appleMusicWeb.pumpMessageLoop();
-        if (appleMusicWeb.isBrowserCreated())
-        {
-            appleMusicOpenPending = false;
-            appleMusicPageOpened = true;
-            appleMusicStatus = utf8("Apple Music: браузер запущен");
-        }
-        else if (juce::Time::getMillisecondCounterHiRes() - appleMusicOpenStartedMs > 15000.0)
-        {
-            appleMusicOpenPending = false;
-            appleMusicPageOpened = false;
-            appleMusicStatus = utf8("Apple Music: Chromium не создал браузер. Журнал: ")
-                + getAppleMusicChromiumLogPath();
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::MessageBoxIconType::WarningIcon,
-                utf8("Не удалось запустить Apple Music"),
-                appleMusicStatus);
-        }
-    }
-
-    status.setText(appleMusicStatus.isNotEmpty()
-                       ? appleMusicStatus
-                       : engine.getStatus(),
-                   juce::dontSendNotification);
-    status.setTooltip(appleMusicStatus);
+    status.setText(engine.getStatus(), juce::dontSendNotification);
     const auto meterProportion = [](float peak)
     {
         if (peak <= 0.000001f)
@@ -1467,7 +1250,7 @@ void MainComponent::timerCallback()
         slider.getProperties().set("meterLevel", smoothedMeterLevels[channel]);
         slider.repaint();
     };
-    for (int channel = 0; channel < 5; ++channel)
+    for (int channel = 0; channel < 4; ++channel)
         updateMeter(channel, *channelFaders[channel]);
     repaint();
 }
@@ -1514,8 +1297,8 @@ void MainComponent::paint(juce::Graphics& g)
                                (float) mixerHeight, 16.0f);
         g.setColour(panel2);
         const int innerX = 28, gap = 12;
-        const int stripW = (bounds.getWidth() - 56 - gap * 4) / 5;
-        for (int i = 0; i < 5; ++i)
+        const int stripW = (bounds.getWidth() - 56 - gap * 3) / 4;
+        for (int i = 0; i < 4; ++i)
             g.fillRoundedRectangle((float) (innerX + i * (stripW + gap)), (float) (mixerY + 12),
                                    (float) stripW, (float) mixerHeight - 24.0f, 10.0f);
 
@@ -1534,11 +1317,10 @@ void MainComponent::resized()
     recordingResult.setBounds(205, 36, w - 605, 17);
 
     openButton.setBounds(w - 380, 7, buttonSize, buttonSize);
-    appleMusicButton.setBounds(w - 330, 7, buttonSize, buttonSize);
-    mixerToggle.setBounds(w - 280, 7, buttonSize, buttonSize);
-    recordButton.setBounds(w - 230, 7, buttonSize, buttonSize);
-    monitorButton.setBounds(w - 180, 7, buttonSize, buttonSize);
-    stopButton.setBounds(w - 130, 7, buttonSize, buttonSize);
+    mixerToggle.setBounds(w - 330, 7, buttonSize, buttonSize);
+    recordButton.setBounds(w - 280, 7, buttonSize, buttonSize);
+    monitorButton.setBounds(w - 230, 7, buttonSize, buttonSize);
+    stopButton.setBounds(w - 180, 7, buttonSize, buttonSize);
     settingsToggle.setBounds(w - 74, 4, 54, 50);
 
     const int contentTop = settingsVisible ? 254 : 64;
@@ -1563,11 +1345,9 @@ void MainComponent::resized()
     const int videoTop = contentTop + (mixerVisible ? mixerHeight + 12 : 0);
     const int videoHeight = juce::jmax(0, h - videoTop - 12);
     youtube.setBounds(24, videoTop + 8, w - 48, juce::jmax(0, videoHeight - 16));
-    appleMusicWeb.setBounds(youtube.getBounds());
-
     const int mixerY = contentTop;
     const int innerX = 28, gap = 12;
-    const int stripW = (w - 56 - gap * 4) / 5;
+    const int stripW = (w - 56 - gap * 3) / 4;
     inputDeviceTitle.setBounds(innerX + 12, mixerY + 10, 62, 28);
     inputDevice.setBounds(innerX + 80, mixerY + 8, 340, 32);
     const int top = mixerY + 48;
@@ -1577,7 +1357,6 @@ void MainComponent::resized()
     const int strip2 = innerX + stripW + gap;
     const int strip3 = innerX + (stripW + gap) * 2;
     const int strip4 = innerX + (stripW + gap) * 3;
-    const int strip5 = innerX + (stripW + gap) * 4;
 
     ch1Title.setBounds(strip1 + 12, top, stripW - 24, 24);
     inputChannelSelectors[0].setBounds(strip1 + 12, top + 25, stripW - 24, 28);
@@ -1605,21 +1384,12 @@ void MainComponent::resized()
         pluginSlots[2][slot].setBounds(strip3 + 120, sliderY + 8 + slot * 38,
                                        stripW - 132, 30);
 
-    appleMusicTitle.setBounds(strip4 + 12, top, stripW - 24, 24);
+    masterTitle.setBounds(strip4 + 12, top, stripW - 24, 24);
     muteButtons[3].setBounds(strip4 + 12, top + 26, 34, 28);
     soloButtons[3].setBounds(strip4 + 52, top + 26, 34, 28);
-    vocalReductionButton.setBounds(strip4 + 12, top + 58, 74, 28);
-    appleMusicVolume.setBounds(strip4 + 36, sliderY, 80, sliderH);
+    master.setBounds(strip4 + 36, sliderY, 80, sliderH);
     for (int slot = 0; slot < 4; ++slot)
         pluginSlots[3][slot].setBounds(strip4 + 120, sliderY + 8 + slot * 38,
-                                       stripW - 132, 30);
-
-    masterTitle.setBounds(strip5 + 12, top, stripW - 24, 24);
-    muteButtons[4].setBounds(strip5 + 12, top + 26, 34, 28);
-    soloButtons[4].setBounds(strip5 + 52, top + 26, 34, 28);
-    master.setBounds(strip5 + 36, sliderY, 80, sliderH);
-    for (int slot = 0; slot < 4; ++slot)
-        pluginSlots[4][slot].setBounds(strip5 + 120, sliderY + 8 + slot * 38,
                                        stripW - 132, 30);
 
     scanPluginsButton.setVisible(settingsVisible);
@@ -1648,8 +1418,7 @@ void MainComponent::resized()
     juce::Component* mixerControls[] = {
         &ch1Title, &gain1,
         &ch2Title, &gain2,
-        &masterTitle, &master, &youtubeTitle, &youtubeVolume, &appleMusicTitle,
-        &appleMusicVolume, &vocalReductionButton
+        &masterTitle, &master, &youtubeTitle, &youtubeVolume
     };
     for (auto* c : mixerControls)
         c->setVisible(show);
