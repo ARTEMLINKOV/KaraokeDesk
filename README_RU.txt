@@ -58,6 +58,7 @@ KaraokeDesk — macOS source project (prototype)
 - Кнопка Apple Music открывает music.apple.com во встроенном Chromium (YouTube остаётся на системном WebKit)
   и не запускает приложение «Музыка». Профиль Chromium, включая авторизацию, сохраняется в
   `~/Library/Application Support/KaraokeDesk/AppleMusicChromium`.
+  Журнал `cef.log` создаётся при запуске приложения, даже если Chromium не сможет открыть браузер.
   Для локальной сборки скачайте CEF 156 для Intel с
   `https://cef-builds.spotifycdn.com/cef_binary_156.0.8%2Bg426920c%2Bchromium-156.0.8078.48_macosx64_minimal.tar.bz2`
   и укажите `-DCEF_ROOT=/путь/к/распакованному/CEF-SDK` (для сборки нужна macOS 14.5+ и Xcode 16+);

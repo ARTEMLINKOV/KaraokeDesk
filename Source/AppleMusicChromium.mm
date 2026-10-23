@@ -53,7 +53,9 @@ namespace
 {
     CefScopedLibraryLoader libraryLoader;
     std::atomic<bool> cefInitialized { false };
-    std::atomic<uint64_t> pumpGeneration { 0 };
+    std::atomic<uint64_t> pumpCancellationGeneration { 0 };
+    std::atomic<int> scheduledPumpCalls { 0 };
+    std::atomic<int> executedPumpCalls { 0 };
     std::vector<CefRefPtr<CefBrowser>> activeBrowsers;
     juce::String startupError;
     juce::File cefLogFile;
@@ -106,6 +108,12 @@ namespace
         logBrowserError(message.toStdString());
     }
 
+    juce::File getChromiumDataDirectory()
+    {
+        return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+            .getChildFile("Application Support/KaraokeDesk/AppleMusicChromium");
+    }
+
     class KaraokeDeskCefApp final : public CefApp,
                                     public CefBrowserProcessHandler
     {
@@ -117,15 +125,26 @@ namespace
 
         void OnScheduleMessagePumpWork(int64_t delayMs) override
         {
-            const auto generation = ++pumpGeneration;
             if (delayMs < 0)
+            {
+                ++pumpCancellationGeneration;
                 return;
+            }
 
+            const auto cancellationGeneration = pumpCancellationGeneration.load();
+            if (scheduledPumpCalls.fetch_add(1) < 10)
+                logBrowserError("CEF scheduled message pump (delay "
+                                + std::to_string(delayMs) + " ms).");
             const auto delay = std::max<int64_t>(0, delayMs);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay * NSEC_PER_MSEC),
                            dispatch_get_main_queue(), ^{
-                if (cefInitialized.load() && generation == pumpGeneration.load())
+                if (cefInitialized.load()
+                    && cancellationGeneration == pumpCancellationGeneration.load())
+                {
+                    if (executedPumpCalls.fetch_add(1) < 10)
+                        logBrowserError("CEF message pump callback executed.");
                     CefDoMessageLoopWork();
+                }
             });
         }
 
@@ -236,9 +255,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
     if (cefInitialized.load())
         return true;
 
-    const auto appData = juce::File::getSpecialLocation(
-        juce::File::userApplicationDataDirectory).getChildFile("KaraokeDesk");
-    const auto cacheRoot = appData.getChildFile("AppleMusicChromium");
+    const auto cacheRoot = getChromiumDataDirectory();
     cefLogFile = cacheRoot.getChildFile("cef.log");
     if (auto result = cacheRoot.createDirectory(); result.failed())
     {
@@ -246,6 +263,17 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
                 + result.getErrorMessage();
         setStartupError(error);
         return false;
+    }
+    {
+        std::ofstream log(cefLogFile.getFullPathName().toStdString(), std::ios::trunc);
+        if (!log)
+        {
+            error = juce::String::fromUTF8("Не удалось создать журнал Chromium: ")
+                    + cefLogFile.getFullPathName();
+            startupError = error;
+            return false;
+        }
+        log << "KaraokeDesk CEF startup\n";
     }
 
     if (!libraryLoader.LoadInMain())
@@ -269,6 +297,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
             juce::File::currentExecutableFile).getParentDirectory().getParentDirectory();
         const auto helperExecutable = contentsDirectory.getChildFile(
             "Frameworks/KaraokeDesk Helper.app/Contents/MacOS/KaraokeDesk Helper");
+        logBrowserError("CEF helper path: " + helperExecutable.getFullPathName().toStdString());
         if (!helperExecutable.existsAsFile())
         {
             error = juce::String::fromUTF8("Не найден Chromium helper: ")
@@ -298,6 +327,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
         CefString(&settings.cache_path) = cachePath.getFullPathName().toStdString();
 
         CefRefPtr<KaraokeDeskCefApp> app(new KaraokeDeskCefApp());
+        logBrowserError("Calling CefInitialize.");
         if (!CefInitialize(mainArgs, settings, app.get(), nullptr))
         {
             error = juce::String::fromUTF8(
@@ -306,6 +336,7 @@ bool initializeAppleMusicChromium(int argc, char* argv[], juce::String& error)
             setStartupError(error);
             return false;
         }
+        logBrowserError("CefInitialize succeeded.");
     }
 
     startupError.clear();
@@ -331,7 +362,7 @@ void shutdownAppleMusicChromium()
     if (!activeBrowsers.empty())
         juce::Logger::writeToLog("CEF browsers did not close before shutdown.");
 
-    ++pumpGeneration;
+    ++pumpCancellationGeneration;
     cefInitialized.store(false);
     if (activeBrowsers.empty())
         CefShutdown();
@@ -340,6 +371,11 @@ void shutdownAppleMusicChromium()
 juce::String getAppleMusicChromiumStartupError()
 {
     return startupError;
+}
+
+juce::String getAppleMusicChromiumLogPath()
+{
+    return getChromiumDataDirectory().getChildFile("cef.log").getFullPathName();
 }
 
 AppleMusicChromiumBrowser::AppleMusicChromiumBrowser()
@@ -396,6 +432,7 @@ bool AppleMusicChromiumBrowser::loadUrl(const juce::String& url)
     windowInfo.SetAsChild(static_cast<CefWindowHandle>(getView()),
                           CefRect(0, 0, juce::jmax(1, getWidth()), juce::jmax(1, getHeight())));
     CefBrowserSettings browserSettings;
+    logBrowserError("Requesting Apple Music browser creation.");
     if (!CefBrowserHost::CreateBrowser(windowInfo, impl->client.get(),
                                        url.toStdString(), browserSettings, nullptr, nullptr))
     {
@@ -404,6 +441,7 @@ bool AppleMusicChromiumBrowser::loadUrl(const juce::String& url)
             "CEF отклонил создание браузера. Подробности записаны в cef.log."));
         return false;
     }
+    logBrowserError("CEF accepted Apple Music browser creation.");
     return true;
 }
 
